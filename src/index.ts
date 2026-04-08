@@ -39,6 +39,7 @@ export {
   createIssueAssetOutput,
   createNullAssetRestrictionOutput,
   createNullAssetTagOutput,
+  createOwnerAssetIssueOutput,
   createOwnerAssetTransferOutput,
   createReissueAssetOutput,
   createTransferOutput,

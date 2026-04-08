@@ -19,6 +19,7 @@ import {
   XNA_REISSUE_PREFIX,
   XNA_TRANSFER_PREFIX
 } from './networks.js';
+import { OWNER_ASSET_AMOUNT } from './constants.js';
 import type {
   AssetIssueOutputParams,
   AssetReissueOutputParams,
@@ -255,13 +256,23 @@ export function createTransferWithMessageOutput(
   };
 }
 
-export function createOwnerAssetTransferOutput(
+export function createOwnerAssetIssueOutput(
   address: string,
   ownerTokenName: string
 ): SerializedTxOutput {
   return {
     valueSats: 0n,
     scriptPubKeyHex: bytesToHex(encodeOwnerAssetScript(address, ownerTokenName))
+  };
+}
+
+export function createOwnerAssetTransferOutput(
+  address: string,
+  ownerTokenName: string
+): SerializedTxOutput {
+  return {
+    valueSats: 0n,
+    scriptPubKeyHex: bytesToHex(encodeAssetTransferScript(address, ownerTokenName, OWNER_ASSET_AMOUNT))
   };
 }
 

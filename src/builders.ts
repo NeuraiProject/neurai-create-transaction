@@ -4,6 +4,7 @@ import {
   createIssueAssetOutput,
   createNullAssetRestrictionOutput,
   createNullAssetTagOutput,
+  createOwnerAssetIssueOutput,
   createOwnerAssetTransferOutput,
   createReissueAssetOutput,
   createTransferOutput,
@@ -109,7 +110,7 @@ export function createIssueAssetTransaction(params: IssueAssetTransactionParams)
 
   if (params.includeOwnerOutput ?? true) {
     outputs.push(
-      createOwnerAssetTransferOutput(
+      createOwnerAssetIssueOutput(
         params.ownerTokenAddress ?? params.toAddress,
         params.ownerTokenName ?? getOwnerTokenName(params.assetName)
       )

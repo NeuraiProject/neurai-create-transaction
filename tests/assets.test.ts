@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createOwnerAssetIssueOutput,
+  createOwnerAssetTransferOutput,
   createTransferWithMessageOutput,
   encodeAssetTransferPayload,
   encodeAssetTransferScript,
@@ -39,6 +41,15 @@ describe('assets', () => {
     expect(bytesToHex(encodeReissueAssetPayload('OTHER1', 1n, 0, true))).toBe(
       '72766e72064f544845523101000000000000000001'
     );
+  });
+
+  it('separates owner issuance scripts from owner transfer scripts', () => {
+    const ownerIssue = createOwnerAssetIssueOutput(LEGACY_TEST, 'OTHER1!');
+    const ownerTransfer = createOwnerAssetTransferOutput(LEGACY_TEST, 'OTHER1!');
+
+    expect(ownerIssue.scriptPubKeyHex).toContain('72766e6f');
+    expect(ownerTransfer.scriptPubKeyHex).toContain('72766e74');
+    expect(ownerTransfer.scriptPubKeyHex).not.toContain('72766e6f');
   });
 
   it('encodes null-asset tag scripts in PQ strict/hash20 modes', () => {

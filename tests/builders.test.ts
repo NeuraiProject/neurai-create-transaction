@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   createFromOperation,
   createFreezeAssetTransaction,
+  createIssueAssetTransaction,
   createIssueDepinTransaction,
   createIssueRestrictedTransaction,
+  createIssueUniqueAssetTransaction,
   createPaymentTransaction,
   createQualifierTagTransaction,
+  createReissueTransaction,
   createStandardAssetTransferTransaction,
   getBurnAddressForOperation,
   getBurnAmountSats,
@@ -26,6 +29,52 @@ describe('builders', () => {
     expect(built.rawTx).toBe(
       `0200000001${'11'.repeat(32)}0100000000ffffffff0188130000000000001976a914e295c733ad2c8e92954d547603f9f63d99eae6c488ac00000000`
     );
+  });
+
+  it('uses owner issuance for root issuance and owner transfer for unique/reissue flows', () => {
+    const root = createIssueAssetTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+      burnAddress: getBurnAddressForOperation('xna-test', 'ISSUE_ROOT'),
+      burnAmountSats: getBurnAmountSats('ISSUE_ROOT'),
+      xnaChangeAddress: LEGACY_TEST,
+      xnaChangeSats: xnaToSatoshis(1),
+      toAddress: LEGACY_TEST,
+      assetName: 'MAKIER',
+      quantityRaw: xnaToSatoshis(1000),
+      units: 0,
+      reissuable: true
+    });
+
+    const unique = createIssueUniqueAssetTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }, { txid: '22'.repeat(32), vout: 1 }],
+      burnAddress: getBurnAddressForOperation('xna-test', 'ISSUE_UNIQUE'),
+      burnAmountSats: getBurnAmountSats('ISSUE_UNIQUE'),
+      xnaChangeAddress: LEGACY_TEST,
+      xnaChangeSats: xnaToSatoshis(1),
+      toAddress: LEGACY_TEST,
+      rootName: 'MAKIER',
+      assetTags: ['001'],
+      ownerTokenAddress: LEGACY_TEST
+    });
+
+    const reissue = createReissueTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }, { txid: '22'.repeat(32), vout: 1 }],
+      burnAddress: getBurnAddressForOperation('xna-test', 'REISSUE'),
+      burnAmountSats: getBurnAmountSats('REISSUE'),
+      xnaChangeAddress: LEGACY_TEST,
+      xnaChangeSats: xnaToSatoshis(1),
+      toAddress: LEGACY_TEST,
+      assetName: 'MAKIER',
+      quantityRaw: xnaToSatoshis(4),
+      units: 0,
+      ownerChangeAddress: LEGACY_TEST
+    });
+
+    expect(root.outputs[2].scriptPubKeyHex).toContain('72766e6f');
+    expect(unique.outputs[2].scriptPubKeyHex).toContain('72766e74');
+    expect(unique.outputs[2].scriptPubKeyHex).not.toContain('72766e6f');
+    expect(reissue.outputs[2].scriptPubKeyHex).toContain('72766e74');
+    expect(reissue.outputs[2].scriptPubKeyHex).not.toContain('72766e6f');
   });
 
   it('reproduces the known PQ TAG raw transaction exactly in hash20 mode', () => {
@@ -126,6 +175,7 @@ describe('builders', () => {
     });
 
     expect(built.outputs).toHaveLength(3);
+    expect(built.outputs[1].scriptPubKeyHex).toContain('72766e74');
     expect(built.outputs[2].scriptPubKeyHex).toBe('c050500907245052494e544503');
   });
 

@@ -4,6 +4,8 @@ export type {
   AssetTransactionBaseParams,
   BaseTransactionParams,
   BuiltTransaction,
+  CreateTransactionFromOperationParams,
+  CreateTransactionOperationType,
   BurnOperationType,
   FreezeAddressesTransactionParams,
   FreezeAssetTransactionParams,
@@ -64,6 +66,7 @@ export {
 export {
   createFreezeAddressesTransaction,
   createFreezeAssetTransaction,
+  createFromOperation,
   createIssueAssetTransaction,
   createIssueDepinTransaction,
   createIssueQualifierTransaction,

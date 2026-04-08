@@ -6,6 +6,25 @@ export type DestinationType = 'p2pkh' | 'pq';
 export type TagOperation = 'tag' | 'untag';
 export type FreezeOperation = 'freeze' | 'unfreeze';
 export type NullAssetDestinationMode = 'strict' | 'hash20';
+export type CreateTransactionOperationType =
+  | 'STANDARD_PAYMENT'
+  | 'STANDARD_TRANSFER'
+  | 'ISSUE_ROOT'
+  | 'ISSUE_SUB'
+  | 'ISSUE_UNIQUE'
+  | 'ISSUE_DEPIN'
+  | 'ISSUE_MSGCHANNEL'
+  | 'ISSUE_QUALIFIER'
+  | 'ISSUE_SUB_QUALIFIER'
+  | 'ISSUE_RESTRICTED'
+  | 'REISSUE'
+  | 'REISSUE_RESTRICTED'
+  | 'TAG_ADDRESSES'
+  | 'UNTAG_ADDRESSES'
+  | 'FREEZE_ADDRESSES'
+  | 'UNFREEZE_ADDRESSES'
+  | 'FREEZE_ASSET'
+  | 'UNFREEZE_ASSET';
 export type BurnOperationType =
   | 'ISSUE_ROOT'
   | 'ISSUE_SUB'
@@ -217,3 +236,73 @@ export interface FreezeAssetTransactionParams extends BaseTransactionParams {
   xnaChangeAddress?: string;
   xnaChangeSats?: bigint | number;
 }
+
+export type CreateTransactionFromOperationParams =
+  | {
+      operationType: 'STANDARD_PAYMENT';
+      params: PaymentTransactionParams;
+    }
+  | {
+      operationType: 'STANDARD_TRANSFER';
+      params: StandardAssetTransferTransactionParams;
+    }
+  | {
+      operationType: 'ISSUE_ROOT';
+      params: IssueAssetTransactionParams;
+    }
+  | {
+      operationType: 'ISSUE_SUB';
+      params: IssueSubAssetTransactionParams;
+    }
+  | {
+      operationType: 'ISSUE_UNIQUE';
+      params: IssueUniqueAssetTransactionParams;
+    }
+  | {
+      operationType: 'ISSUE_DEPIN';
+      params: IssueDepinTransactionParams;
+    }
+  | {
+      operationType: 'ISSUE_MSGCHANNEL';
+      params: IssueAssetTransactionParams;
+    }
+  | {
+      operationType: 'ISSUE_QUALIFIER' | 'ISSUE_SUB_QUALIFIER';
+      params: IssueQualifierTransactionParams;
+    }
+  | {
+      operationType: 'ISSUE_RESTRICTED';
+      params: IssueRestrictedTransactionParams;
+    }
+  | {
+      operationType: 'REISSUE';
+      params: ReissueTransactionParams;
+    }
+  | {
+      operationType: 'REISSUE_RESTRICTED';
+      params: ReissueRestrictedTransactionParams;
+    }
+  | {
+      operationType: 'TAG_ADDRESSES';
+      params: Omit<QualifierTagTransactionParams, 'operation'>;
+    }
+  | {
+      operationType: 'UNTAG_ADDRESSES';
+      params: Omit<QualifierTagTransactionParams, 'operation'>;
+    }
+  | {
+      operationType: 'FREEZE_ADDRESSES';
+      params: Omit<FreezeAddressesTransactionParams, 'operation'>;
+    }
+  | {
+      operationType: 'UNFREEZE_ADDRESSES';
+      params: Omit<FreezeAddressesTransactionParams, 'operation'>;
+    }
+  | {
+      operationType: 'FREEZE_ASSET';
+      params: Omit<FreezeAssetTransactionParams, 'operation'>;
+    }
+  | {
+      operationType: 'UNFREEZE_ASSET';
+      params: Omit<FreezeAssetTransactionParams, 'operation'>;
+    };

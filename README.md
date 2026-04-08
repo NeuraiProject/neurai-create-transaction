@@ -23,6 +23,10 @@ Current scope:
 This package is intentionally low-level. It does not select UTXOs, estimate fees
 or sign transactions.
 
+It now also exposes `createFromOperation(...)`, a typed dispatcher for consumers
+that already know the high-level operation type and want a stable bridge into
+raw transaction serialization without inferring which builder to call.
+
 Build outputs:
 
 - `dist/index.js`: ESM
@@ -55,6 +59,7 @@ is useful to reproduce current raw transactions while investigating PQ tag bugs.
 | Tag / untag addresses | `createQualifierTagTransaction(...)` | Use `operation: 'tag' | 'untag'` |
 | Freeze / unfreeze addresses | `createFreezeAddressesTransaction(...)` | Use `operation: 'freeze' | 'unfreeze'` |
 | Freeze / unfreeze asset globally | `createFreezeAssetTransaction(...)` | Use `operation: 'freeze' | 'unfreeze'` |
+| Typed dispatcher | `createFromOperation(...)` | Accepts `{ operationType, params }` and routes to the right builder |
 
 These builders create the expanded physical transaction outputs that the node
 would normally derive internally from asset RPC JSON.
@@ -126,6 +131,34 @@ const tag = createQualifierTagTransaction({
 
 console.log(restricted.rawTx);
 console.log(tag.rawTx);
+```
+
+## Bridging from upstream metadata
+
+When another package already resolved burn, change, owner return and operation
+metadata, route that payload through `createFromOperation(...)` instead of
+making the consumer choose the builder manually:
+
+```ts
+import { createFromOperation } from './dist/index.js';
+
+const built = createFromOperation({
+  operationType: 'TAG_ADDRESSES',
+  params: {
+    inputs: [
+      { txid: '...', vout: 0 },
+      { txid: '...', vout: 1 }
+    ],
+    qualifierName: '#KYC',
+    targetAddresses: ['tnq1...'],
+    burnAddress: 'tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA',
+    burnAmountSats: 20000000n,
+    xnaChangeAddress: 'tnq1...',
+    xnaChangeSats: 400000000n,
+    qualifierChangeAddress: 'tnq1...',
+    qualifierChangeAmountRaw: 900000000n
+  }
+});
 ```
 
 ## Notes

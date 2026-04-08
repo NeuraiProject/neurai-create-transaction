@@ -25,6 +25,7 @@ import {
 import { createUnsignedTransaction } from './tx.js';
 import type {
   BuiltTransaction,
+  CreateTransactionFromOperationParams,
   FreezeAddressesTransactionParams,
   FreezeAssetTransactionParams,
   FreezeOperation,
@@ -344,4 +345,67 @@ export function createFreezeAssetTransaction(
   outputs.push(createOwnerAssetTransferOutput(params.ownerChangeAddress, getOwnerTokenName(params.assetName)));
   outputs.push(createGlobalRestrictionOutput(params.assetName, freezeFlagFromOperation(params.operation) + 2));
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
+}
+
+export function createFromOperation(
+  build: CreateTransactionFromOperationParams
+): BuiltTransaction {
+  switch (build.operationType) {
+    case 'STANDARD_PAYMENT':
+      return createPaymentTransaction(build.params);
+    case 'STANDARD_TRANSFER':
+      return createStandardAssetTransferTransaction(build.params);
+    case 'ISSUE_ROOT':
+    case 'ISSUE_MSGCHANNEL':
+      return createIssueAssetTransaction(build.params);
+    case 'ISSUE_SUB':
+      return createIssueSubAssetTransaction(build.params);
+    case 'ISSUE_UNIQUE':
+      return createIssueUniqueAssetTransaction(build.params);
+    case 'ISSUE_DEPIN':
+      return createIssueDepinTransaction(build.params);
+    case 'ISSUE_QUALIFIER':
+    case 'ISSUE_SUB_QUALIFIER':
+      return createIssueQualifierTransaction(build.params);
+    case 'ISSUE_RESTRICTED':
+      return createIssueRestrictedTransaction(build.params);
+    case 'REISSUE':
+      return createReissueTransaction(build.params);
+    case 'REISSUE_RESTRICTED':
+      return createReissueRestrictedTransaction(build.params);
+    case 'TAG_ADDRESSES':
+      return createQualifierTagTransaction({
+        ...build.params,
+        operation: 'tag'
+      });
+    case 'UNTAG_ADDRESSES':
+      return createQualifierTagTransaction({
+        ...build.params,
+        operation: 'untag'
+      });
+    case 'FREEZE_ADDRESSES':
+      return createFreezeAddressesTransaction({
+        ...build.params,
+        operation: 'freeze'
+      });
+    case 'UNFREEZE_ADDRESSES':
+      return createFreezeAddressesTransaction({
+        ...build.params,
+        operation: 'unfreeze'
+      });
+    case 'FREEZE_ASSET':
+      return createFreezeAssetTransaction({
+        ...build.params,
+        operation: 'freeze'
+      });
+    case 'UNFREEZE_ASSET':
+      return createFreezeAssetTransaction({
+        ...build.params,
+        operation: 'unfreeze'
+      });
+    default: {
+      const unsupported: never = build;
+      throw new Error(`Unsupported operation type: ${JSON.stringify(unsupported)}`);
+    }
+  }
 }

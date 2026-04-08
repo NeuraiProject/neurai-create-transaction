@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createFromOperation,
   createFreezeAssetTransaction,
   createIssueDepinTransaction,
   createIssueRestrictedTransaction,
@@ -145,5 +146,58 @@ describe('builders', () => {
     expect(built.outputs).toHaveLength(3);
     expect(built.outputs[1].scriptPubKeyHex).toContain('72766e74054153534554');
     expect(built.outputs[2].scriptPubKeyHex).toContain('54209c2c8e121a0139ba39bffd3ca97267bca9d4c0c1e84ac0c34a883c28e7a912ca');
+  });
+
+  it('dispatches tag operations from explicit operation metadata', () => {
+    const built = createFromOperation({
+      operationType: 'TAG_ADDRESSES',
+      params: {
+        qualifierName: '#OTHER1',
+        targetAddresses: [PQ_TEST],
+        inputs: [
+          {
+            txid: 'cd3a248d3c8061fce20a251b6d4395811a53c0594049d180f587223c10ecee09',
+            vout: 1
+          },
+          {
+            txid: 'cd3a248d3c8061fce20a251b6d4395811a53c0594049d180f587223c10ecee09',
+            vout: 2
+          }
+        ],
+        burnAddress: 'tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA',
+        burnAmountSats: 20000000n,
+        xnaChangeAddress: PQ_TEST,
+        xnaChangeSats: 3377843585545n,
+        qualifierChangeAddress: PQ_TEST,
+        qualifierChangeAmountRaw: 900000000n,
+        nullAssetDestinationMode: 'hash20'
+      }
+    });
+
+    expect(built.outputs[3].scriptPubKeyHex).toBe(
+      'c01486aeff20d313868b3ee11740d113ac47fd229ec20907234f544845523101'
+    );
+  });
+
+  it('dispatches sub-qualifier issuance from explicit operation metadata', () => {
+    const built = createFromOperation({
+      operationType: 'ISSUE_SUB_QUALIFIER',
+      params: {
+        inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+        burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_SUB_QUALIFIER'),
+        burnAmountSats: getBurnAmountSats('ISSUE_SUB_QUALIFIER'),
+        xnaChangeAddress: PQ_TEST,
+        xnaChangeSats: xnaToSatoshis(1),
+        toAddress: PQ_TEST,
+        assetName: '#ROOT/SUB',
+        quantityRaw: 1n,
+        rootChangeAddress: PQ_TEST,
+        changeQuantityRaw: xnaToSatoshis(10)
+      }
+    });
+
+    expect(built.outputs).toHaveLength(4);
+    expect(built.outputs[2].scriptPubKeyHex).toContain('72766e740523524f4f54');
+    expect(built.outputs[3].scriptPubKeyHex).toContain('72766e71');
   });
 });

@@ -1,0 +1,54 @@
+{
+  "name": "@neuraiproject/neurai-create-transaction",
+  "version": "0.1.0",
+  "description": "Local Neurai raw transaction creation helpers for browser and Node environments",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "browser": "./dist/browser.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./browser": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/browser.js"
+    },
+    "./global": "./dist/NeuraiCreateTransaction.global.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && rollup -c rollup.config.mjs",
+    "build:ts": "tsc -p tsconfig.json",
+    "test": "npm run build && vitest run",
+    "test:run": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@neuraiproject/neurai-key": "^3.0.0",
+    "bech32": "^2.0.0",
+    "bs58": "^6.0.0",
+    "bs58check": "^4.0.0"
+  },
+  "keywords": [
+    "neurai",
+    "transaction",
+    "rawtx",
+    "assets",
+    "pq"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.8",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "rollup": "^4.52.4",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

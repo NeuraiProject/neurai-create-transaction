@@ -1,0 +1,76 @@
+import { describe, expect, it } from 'vitest';
+import {
+  createTransferWithMessageOutput,
+  encodeAssetTransferPayload,
+  encodeAssetTransferScript,
+  encodeGlobalRestrictionScript,
+  encodeNewAssetPayload,
+  encodeNullAssetTagScript,
+  encodeOwnerAssetPayload,
+  encodeReissueAssetPayload,
+  encodeVerifierStringScript,
+  xnaToSatoshis
+} from '../src/assets.js';
+import { bytesToHex } from '../src/bytes.js';
+
+const LEGACY_TEST = 'tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA';
+const PQ_TEST = 'tnq1ps6h07gxnzwrgk0hpzaqdzyavgl7j98kz4nfkk3';
+
+describe('assets', () => {
+  it('encodes asset transfer payloads exactly', () => {
+    expect(bytesToHex(encodeAssetTransferPayload('ASSET', 1n))).toBe(
+      '72766e740541535345540100000000000000'
+    );
+  });
+
+  it('encodes transfer scripts for PQ outputs', () => {
+    expect(bytesToHex(encodeAssetTransferScript(PQ_TEST, '#OTHER1', xnaToSatoshis(9)))).toBe(
+      '511486aeff20d313868b3ee11740d113ac47fd229ec2c01472766e7407234f544845523100e9a4350000000075'
+    );
+  });
+
+  it('encodes new asset, owner and reissue payloads', () => {
+    expect(bytesToHex(encodeNewAssetPayload('OTHER1', 1n, 0, true))).toBe(
+      '72766e71064f54484552310100000000000000000100'
+    );
+    expect(bytesToHex(encodeOwnerAssetPayload('OTHER1!'))).toBe(
+      '72766e6f074f544845523121'
+    );
+    expect(bytesToHex(encodeReissueAssetPayload('OTHER1', 1n, 0, true))).toBe(
+      '72766e72064f544845523101000000000000000001'
+    );
+  });
+
+  it('encodes null-asset tag scripts in PQ strict/hash20 modes', () => {
+    expect(bytesToHex(encodeNullAssetTagScript(PQ_TEST, '#OTHER1', 'tag', 'hash20'))).toBe(
+      'c01486aeff20d313868b3ee11740d113ac47fd229ec20907234f544845523101'
+    );
+    expect(bytesToHex(encodeNullAssetTagScript(PQ_TEST, '#OTHER1', 'tag', 'strict'))).toBe(
+      'c0511486aeff20d313868b3ee11740d113ac47fd229ec20907234f544845523101'
+    );
+  });
+
+  it('encodes verifier and global restriction scripts', () => {
+    expect(bytesToHex(encodeVerifierStringScript('#TAG&#KYC'))).toBe(
+      'c0500a092354414726234b5943'
+    );
+    expect(bytesToHex(encodeGlobalRestrictionScript('$PRINTE', 3))).toBe(
+      'c050500907245052494e544503'
+    );
+  });
+
+  it('encodes transferwithmessage outputs', () => {
+    const output = createTransferWithMessageOutput({
+      address: LEGACY_TEST,
+      assetName: 'ASSET',
+      amountRaw: 1n,
+      message: '9c2c8e121a0139ba39bffd3ca97267bca9d4c0c1e84ac0c34a883c28e7a912ca',
+      expireTime: 123n
+    });
+
+    expect(output.valueSats).toBe(0n);
+    expect(output.scriptPubKeyHex).toContain('72766e740541535345540100000000000000');
+    expect(output.scriptPubKeyHex).toContain('54209c2c8e121a0139ba39bffd3ca97267bca9d4c0c1e84ac0c34a883c28e7a912ca');
+    expect(output.scriptPubKeyHex.endsWith('7b0000000000000075')).toBe(true);
+  });
+});

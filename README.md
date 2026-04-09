@@ -49,7 +49,7 @@ is useful to reproduce current raw transactions while investigating PQ tag bugs.
 | Standard XNA payment | `createPaymentTransaction(...)` | Normal unsigned payments |
 | Standard asset transfer | `createStandardAssetTransferTransaction(...)` | Supports `transfer` and `transferwithmessage` |
 | Root asset issue | `createIssueAssetTransaction(...)` | Standard `issue` flow |
-| Sub-asset issue | `createIssueSubAssetTransaction(...)` | Returns parent owner token |
+| Sub-asset issue | `createIssueSubAssetTransaction(...)` | Returns parent owner token and issues child owner token |
 | DePIN issue | `createIssueDepinTransaction(...)` | Separate `ISSUE_DEPIN`, forces `&...` and `units=0` |
 | Unique / NFT issue | `createIssueUniqueAssetTransaction(...)` | Expands one output per unique tag |
 | Qualifier issue | `createIssueQualifierTransaction(...)` | Supports sub-qualifier root change |

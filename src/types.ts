@@ -166,6 +166,7 @@ export interface IssueSubAssetTransactionParams extends AssetTransactionBasePara
   reissuable?: boolean;
   ipfsHash?: string;
   parentOwnerAddress?: string;
+  ownerTokenAddress?: string;
 }
 
 export interface IssueDepinTransactionParams extends AssetTransactionBaseParams {

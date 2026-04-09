@@ -5,6 +5,7 @@ import {
   createIssueAssetTransaction,
   createIssueDepinTransaction,
   createIssueRestrictedTransaction,
+  createIssueSubAssetTransaction,
   createIssueUniqueAssetTransaction,
   createPaymentTransaction,
   createQualifierTagTransaction,
@@ -75,6 +76,32 @@ describe('builders', () => {
     expect(unique.outputs[2].scriptPubKeyHex).not.toContain('72766e6f');
     expect(reissue.outputs[2].scriptPubKeyHex).toContain('72766e74');
     expect(reissue.outputs[2].scriptPubKeyHex).not.toContain('72766e6f');
+  });
+
+  it('uses parent owner transfer and child owner issuance for sub-asset flows', () => {
+    const sub = createIssueSubAssetTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }, { txid: '22'.repeat(32), vout: 1 }],
+      burnAddress: getBurnAddressForOperation('xna-test', 'ISSUE_SUB'),
+      burnAmountSats: getBurnAmountSats('ISSUE_SUB'),
+      xnaChangeAddress: LEGACY_TEST,
+      xnaChangeSats: xnaToSatoshis(1),
+      toAddress: LEGACY_TEST,
+      assetName: 'MAKIER/RIVER',
+      quantityRaw: xnaToSatoshis(10),
+      units: 0,
+      reissuable: true,
+      parentOwnerAddress: LEGACY_TEST,
+      ownerTokenAddress: LEGACY_TEST
+    });
+
+    expect(sub.outputs).toHaveLength(5);
+    expect(sub.outputs[2].scriptPubKeyHex).toContain('72766e74');
+    expect(sub.outputs[2].scriptPubKeyHex).toContain('4d414b49455221');
+    expect(sub.outputs[2].scriptPubKeyHex).not.toContain('72766e6f');
+    expect(sub.outputs[3].scriptPubKeyHex).toContain('72766e6f');
+    expect(sub.outputs[3].scriptPubKeyHex).toContain('4d414b4945522f524956455221');
+    expect(sub.outputs[4].scriptPubKeyHex).toContain('72766e71');
+    expect(sub.outputs[4].scriptPubKeyHex).toContain('4d414b4945522f5249564552');
   });
 
   it('reproduces the known PQ TAG raw transaction exactly in hash20 mode', () => {

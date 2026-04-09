@@ -139,12 +139,32 @@ export function createIssueSubAssetTransaction(
     throw new Error(`Sub-asset name must contain '/': ${params.assetName}`);
   }
 
-  return createIssueAssetTransaction({
-    ...params,
-    includeOwnerOutput: true,
-    ownerTokenAddress: params.parentOwnerAddress ?? params.xnaChangeAddress ?? params.toAddress,
-    ownerTokenName: getOwnerTokenName(parentAssetName)
-  });
+  const outputs: SerializedTxOutput[] = [];
+  appendXnaEnvelope(outputs, params.burnAddress, params.burnAmountSats, params.xnaChangeAddress, params.xnaChangeSats);
+  outputs.push(
+    createOwnerAssetTransferOutput(
+      params.parentOwnerAddress ?? params.xnaChangeAddress ?? params.toAddress,
+      getOwnerTokenName(parentAssetName)
+    )
+  );
+  outputs.push(
+    createOwnerAssetIssueOutput(
+      params.ownerTokenAddress ?? params.toAddress,
+      getOwnerTokenName(params.assetName)
+    )
+  );
+  outputs.push(
+    createIssueAssetOutput({
+      address: params.toAddress,
+      assetName: params.assetName,
+      quantityRaw: params.quantityRaw,
+      units: params.units ?? 0,
+      reissuable: params.reissuable ?? true,
+      ipfsHash: params.ipfsHash
+    })
+  );
+
+  return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
 
 export function createIssueDepinTransaction(params: IssueDepinTransactionParams): BuiltTransaction {

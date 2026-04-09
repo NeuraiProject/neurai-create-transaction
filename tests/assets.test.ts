@@ -62,8 +62,8 @@ describe('assets', () => {
   });
 
   it('encodes verifier and global restriction scripts', () => {
-    expect(bytesToHex(encodeVerifierStringScript('#TAG&#KYC'))).toBe(
-      'c0500a092354414726234b5943'
+    expect(bytesToHex(encodeVerifierStringScript('TAG&KYC'))).toBe(
+      'c0500807544147264b5943'
     );
     expect(bytesToHex(encodeGlobalRestrictionScript('$PRINTE', 3))).toBe(
       'c050500907245052494e544503'

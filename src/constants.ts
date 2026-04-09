@@ -97,7 +97,9 @@ export function getUniqueAssetName(rootName: string, tag: string): string {
 }
 
 export function normalizeVerifierString(verifierString: string): string {
-  return String(verifierString || '').replace(/\s+/g, '');
+  return String(verifierString || '')
+    .replace(/\s+/g, '')
+    .replace(/#/g, '');
 }
 
 export function isDepinAssetName(assetName: string): boolean {

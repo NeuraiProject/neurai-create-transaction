@@ -28,7 +28,9 @@ describe('constants', () => {
     expect(getOwnerTokenName('$ASSET')).toBe('ASSET!');
     expect(getParentAssetName('ROOT/SUB')).toBe('ROOT');
     expect(getUniqueAssetName('ROOT', '001')).toBe('ROOT#001');
-    expect(normalizeVerifierString('#TAG & #KYC')).toBe('#TAG&#KYC');
+    expect(normalizeVerifierString('#TAG & #KYC')).toBe('TAG&KYC');
+    expect(normalizeVerifierString('!#KYC')).toBe('!KYC');
+    expect(normalizeVerifierString('(#A|#B)&!#C')).toBe('(A|B)&!C');
   });
 
   it('detects DEPIN names explicitly', () => {

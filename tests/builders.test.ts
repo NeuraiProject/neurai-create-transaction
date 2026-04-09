@@ -155,7 +155,7 @@ describe('builders', () => {
     });
 
     expect(built.outputs).toHaveLength(5);
-    expect(built.outputs[2].scriptPubKeyHex).toBe('c0500a092354414726234b5943');
+    expect(built.outputs[2].scriptPubKeyHex).toBe('c0500807544147264b5943');
   });
 
   it('creates DEPIN transactions with explicit DEPIN rules', () => {

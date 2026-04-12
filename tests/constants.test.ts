@@ -41,7 +41,7 @@ describe('constants', () => {
   });
 
   it('infers networks and exports protocol constants', () => {
-    expect(inferNetworkFromAnyAddress('tnq1ps6h07gxnzwrgk0hpzaqdzyavgl7j98kz4nfkk3')).toBe('xna-pq-test');
+    expect(inferNetworkFromAnyAddress('tnq1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqjer8rk')).toBe('xna-pq-test');
     expect(OWNER_ASSET_AMOUNT).toBe(100000000n);
     expect(UNIQUE_ASSET_AMOUNT).toBe(100000000n);
     expect(UNIQUE_ASSET_UNITS).toBe(0);

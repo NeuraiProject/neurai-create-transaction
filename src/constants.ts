@@ -1,4 +1,4 @@
-import type { BurnOperationType, SupportedNetwork } from './types.js';
+import type { AddressLike, BurnOperationType, SupportedNetwork } from './types.js';
 import { inferNetworkFromAddress } from './networks.js';
 
 export const OWNER_ASSET_AMOUNT = 100000000n;
@@ -73,7 +73,7 @@ export function getBurnAmountSats(operation: BurnOperationType, multiplier = 1):
   return BigInt(Math.round(getBurnAmountXna(operation, multiplier) * 1e8));
 }
 
-export function inferNetworkFromAnyAddress(address: string): SupportedNetwork {
+export function inferNetworkFromAnyAddress(address: AddressLike): SupportedNetwork {
   return inferNetworkFromAddress(address);
 }
 

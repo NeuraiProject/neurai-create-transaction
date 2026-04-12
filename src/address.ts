@@ -1,5 +1,6 @@
 import { bech32m } from 'bech32';
 import bs58check from 'bs58check';
+import { resolveAddressInput } from './address-input.js';
 import { concatBytes, pushData } from './bytes.js';
 import {
   inferNetworkFromAddress,
@@ -10,21 +11,22 @@ import {
   PQ_MAINNET_HRP,
   PQ_TESTNET_HRP
 } from './networks.js';
-import type { AddressDestination, NullAssetDestinationMode, SupportedNetwork } from './types.js';
+import type { AddressDestination, AddressLike, NullAssetDestinationMode, SupportedNetwork } from './types.js';
 
-export function decodeAddress(address: string): AddressDestination {
-  const normalized = String(address || '').trim();
+export function decodeAddress(address: AddressLike): AddressDestination {
+  const normalized = resolveAddressInput(address);
+  const lowered = normalized.toLowerCase();
   if (!normalized) throw new Error('Address is required');
 
-  if (normalized.startsWith(PQ_MAINNET_HRP + '1') || normalized.startsWith(PQ_TESTNET_HRP + '1')) {
+  if (lowered.startsWith(PQ_MAINNET_HRP + '1') || lowered.startsWith(PQ_TESTNET_HRP + '1')) {
     const decoded = bech32m.decode(normalized);
     const version = decoded.words[0];
     const program = Uint8Array.from(bech32m.fromWords(decoded.words.slice(1)));
-    if (version !== 1 || program.length !== 20) {
-      throw new Error(`Unsupported PQ address program for ${address}`);
+    if (version !== 1 || program.length !== 32) {
+      throw new Error(`Unsupported AuthScript address program for ${address}`);
     }
-    const network: SupportedNetwork = normalized.startsWith(PQ_TESTNET_HRP + '1') ? 'xna-pq-test' : 'xna-pq';
-    return { address: normalized, type: 'pq', network, hash: program };
+    const network: SupportedNetwork = lowered.startsWith(PQ_TESTNET_HRP + '1') ? 'xna-pq-test' : 'xna-pq';
+    return { address: normalized, type: 'authscript', network, program, commitment: program };
   }
 
   const payload = Uint8Array.from(bs58check.decode(normalized));
@@ -40,11 +42,12 @@ export function decodeAddress(address: string): AddressDestination {
     address: normalized,
     type: 'p2pkh',
     network: inferNetworkFromAddress(normalized),
+    program: payload.slice(1),
     hash: payload.slice(1)
   };
 }
 
-export function encodeP2PKHScript(address: string): Uint8Array {
+export function encodeP2PKHScript(address: AddressLike): Uint8Array {
   const destination = decodeAddress(address);
   if (destination.type !== 'p2pkh') {
     throw new Error(`Address ${address} is not legacy P2PKH`);
@@ -59,36 +62,33 @@ export function encodeP2PKHScript(address: string): Uint8Array {
   );
 }
 
-export function encodePQWitnessScript(address: string): Uint8Array {
+export function encodeAuthScriptDestinationScript(address: AddressLike): Uint8Array {
   const destination = decodeAddress(address);
-  if (destination.type !== 'pq') {
-    throw new Error(`Address ${address} is not PQ witness v1`);
+  if (destination.type !== 'authscript') {
+    throw new Error(`Address ${address} is not AuthScript witness v1`);
   }
-  return concatBytes(Uint8Array.of(OP_1), pushData(destination.hash));
+  return concatBytes(Uint8Array.of(OP_1), pushData(destination.commitment));
 }
 
-export function encodeDestinationScript(address: string): Uint8Array {
+export function encodeDestinationScript(address: AddressLike): Uint8Array {
   const destination = decodeAddress(address);
-  return destination.type === 'pq'
-    ? encodePQWitnessScript(address)
+  return destination.type === 'authscript'
+    ? encodeAuthScriptDestinationScript(address)
     : encodeP2PKHScript(address);
 }
 
 export function encodeNullAssetDestinationScript(
-  address: string,
+  address: AddressLike,
   mode: NullAssetDestinationMode = 'strict'
 ): Uint8Array {
   const destination = decodeAddress(address);
-  if (destination.type === 'pq') {
+  if (destination.type === 'authscript') {
     if (mode === 'hash20') {
-      return concatBytes(
-        Uint8Array.of(OP_XNA_ASSET),
-        pushData(destination.hash)
-      );
+      throw new Error('hash20 null-asset mode is not supported for AuthScript destinations');
     }
     return concatBytes(
       Uint8Array.of(OP_XNA_ASSET, OP_1),
-      pushData(destination.hash)
+      pushData(destination.commitment)
     );
   }
 
@@ -97,3 +97,6 @@ export function encodeNullAssetDestinationScript(
     pushData(destination.hash)
   );
 }
+
+export const encodePQWitnessScript = encodeAuthScriptDestinationScript;
+export { resolveAddressInput } from './address-input.js';

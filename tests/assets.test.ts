@@ -16,7 +16,8 @@ import {
 import { bytesToHex } from '../src/bytes.js';
 
 const LEGACY_TEST = 'tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA';
-const PQ_TEST = 'tnq1ps6h07gxnzwrgk0hpzaqdzyavgl7j98kz4nfkk3';
+const AUTHSCRIPT_TEST = 'tnq1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqjer8rk';
+const AUTHSCRIPT_COMMITMENT = '3c5c93248148e2b005ddb351bb506f0b830cec149a1b03791949c983d4336a76';
 
 describe('assets', () => {
   it('encodes asset transfer payloads exactly', () => {
@@ -25,9 +26,9 @@ describe('assets', () => {
     );
   });
 
-  it('encodes transfer scripts for PQ outputs', () => {
-    expect(bytesToHex(encodeAssetTransferScript(PQ_TEST, '#OTHER1', xnaToSatoshis(9)))).toBe(
-      '511486aeff20d313868b3ee11740d113ac47fd229ec2c01472766e7407234f544845523100e9a4350000000075'
+  it('encodes transfer scripts for AuthScript outputs', () => {
+    expect(bytesToHex(encodeAssetTransferScript(AUTHSCRIPT_TEST, '#OTHER1', xnaToSatoshis(9)))).toBe(
+      `5120${AUTHSCRIPT_COMMITMENT}c01472766e7407234f544845523100e9a4350000000075`
     );
   });
 
@@ -52,12 +53,12 @@ describe('assets', () => {
     expect(ownerTransfer.scriptPubKeyHex).not.toContain('72766e6f');
   });
 
-  it('encodes null-asset tag scripts in PQ strict/hash20 modes', () => {
-    expect(bytesToHex(encodeNullAssetTagScript(PQ_TEST, '#OTHER1', 'tag', 'hash20'))).toBe(
-      'c01486aeff20d313868b3ee11740d113ac47fd229ec20907234f544845523101'
+  it('encodes null-asset tag scripts for AuthScript outputs canonically', () => {
+    expect(bytesToHex(encodeNullAssetTagScript(AUTHSCRIPT_TEST, '#OTHER1', 'tag', 'strict'))).toBe(
+      `c05120${AUTHSCRIPT_COMMITMENT}0907234f544845523101`
     );
-    expect(bytesToHex(encodeNullAssetTagScript(PQ_TEST, '#OTHER1', 'tag', 'strict'))).toBe(
-      'c0511486aeff20d313868b3ee11740d113ac47fd229ec20907234f544845523101'
+    expect(() => encodeNullAssetTagScript(AUTHSCRIPT_TEST, '#OTHER1', 'tag', 'hash20')).toThrow(
+      /hash20 null-asset mode is not supported/
     );
   });
 

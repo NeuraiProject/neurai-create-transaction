@@ -1,4 +1,8 @@
 export type {
+  AddressLike,
+  AddressDestination,
+  AddressObjectLike,
+  AuthScriptAddressDestination,
   AssetIssueOutputParams,
   AssetReissueOutputParams,
   AssetTransactionBaseParams,
@@ -16,6 +20,8 @@ export type {
   IssueRestrictedTransactionParams,
   IssueSubAssetTransactionParams,
   IssueUniqueAssetTransactionParams,
+  LegacyAddressDestination,
+  NeuraiKeyAddressLike,
   NullAssetDestinationMode,
   PaymentTransactionParams,
   QualifierTagTransactionParams,
@@ -24,6 +30,7 @@ export type {
   SerializedTxOutput,
   StandardAssetTransferTransactionParams,
   SupportedNetwork,
+  DestinationType,
   TagOperation,
   TransferOutputParams,
   TransferWithMessageOutputParams,
@@ -89,10 +96,12 @@ export {
 
 export {
   decodeAddress,
+  encodeAuthScriptDestinationScript,
   encodeDestinationScript,
   encodeNullAssetDestinationScript,
   encodeP2PKHScript,
-  encodePQWitnessScript
+  encodePQWitnessScript,
+  resolveAddressInput
 } from './address.js';
 
 export {

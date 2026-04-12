@@ -1,8 +1,15 @@
-import type { Network as LegacyNetwork, PQNetwork } from '@neuraiproject/neurai-key';
+import type {
+  IAddressObject,
+  ILegacyAuthScriptAddressObject,
+  INoAuthAddressObject,
+  IPQAddressObject,
+  Network as LegacyNetwork,
+  PQNetwork
+} from '@neuraiproject/neurai-key';
 
 export type SupportedNetwork = LegacyNetwork | PQNetwork;
 
-export type DestinationType = 'p2pkh' | 'pq';
+export type DestinationType = 'p2pkh' | 'authscript';
 export type TagOperation = 'tag' | 'untag';
 export type FreezeOperation = 'freeze' | 'unfreeze';
 export type NullAssetDestinationMode = 'strict' | 'hash20';
@@ -51,12 +58,36 @@ export interface SerializedTxOutput {
   scriptPubKeyHex: string;
 }
 
-export interface AddressDestination {
+export interface AddressObjectLike {
   address: string;
-  type: DestinationType;
+}
+
+export type NeuraiKeyAddressLike =
+  | IAddressObject
+  | IPQAddressObject
+  | INoAuthAddressObject
+  | ILegacyAuthScriptAddressObject
+  | AddressObjectLike;
+
+export type AddressLike = string | NeuraiKeyAddressLike;
+
+export interface LegacyAddressDestination {
+  address: string;
+  type: 'p2pkh';
   network: SupportedNetwork;
+  program: Uint8Array;
   hash: Uint8Array;
 }
+
+export interface AuthScriptAddressDestination {
+  address: string;
+  type: 'authscript';
+  network: SupportedNetwork;
+  program: Uint8Array;
+  commitment: Uint8Array;
+}
+
+export type AddressDestination = LegacyAddressDestination | AuthScriptAddressDestination;
 
 export interface UnsignedTransaction {
   version?: number;
@@ -71,7 +102,7 @@ export interface BuiltTransaction {
 }
 
 export interface TxPaymentOutput {
-  address: string;
+  address: AddressLike;
   valueSats: bigint | number;
 }
 
@@ -79,15 +110,15 @@ export interface BaseTransactionParams {
   version?: number;
   locktime?: number;
   inputs: TxInput[];
+  extraOutputs?: SerializedTxOutput[];
 }
 
 export interface PaymentTransactionParams extends BaseTransactionParams {
   payments: TxPaymentOutput[];
-  extraOutputs?: SerializedTxOutput[];
 }
 
 export interface TransferOutputParams {
-  address: string;
+  address: AddressLike;
   assetName: string;
   amountRaw: bigint | number;
 }
@@ -98,7 +129,7 @@ export interface TransferWithMessageOutputParams extends TransferOutputParams {
 }
 
 export interface AssetIssueOutputParams {
-  address: string;
+  address: AddressLike;
   assetName: string;
   quantityRaw: bigint | number;
   units?: number;
@@ -107,7 +138,7 @@ export interface AssetIssueOutputParams {
 }
 
 export interface AssetReissueOutputParams {
-  address: string;
+  address: AddressLike;
   assetName: string;
   quantityRaw: bigint | number;
   units?: number;
@@ -116,26 +147,23 @@ export interface AssetReissueOutputParams {
 }
 
 export interface XnaEnvelope {
-  burnAddress?: string;
+  burnAddress?: AddressLike;
   burnAmountSats?: bigint | number;
-  xnaChangeAddress?: string;
+  xnaChangeAddress?: AddressLike;
   xnaChangeSats?: bigint | number;
 }
 
 export interface AssetTransactionBaseParams extends BaseTransactionParams, XnaEnvelope {}
 
-export interface QualifierTagTransactionParams {
-  version?: number;
-  locktime?: number;
+export interface QualifierTagTransactionParams extends BaseTransactionParams {
   qualifierName: string;
   operation: TagOperation;
-  targetAddresses: string[];
-  inputs: TxInput[];
-  burnAddress: string;
+  targetAddresses: AddressLike[];
+  burnAddress: AddressLike;
   burnAmountSats: bigint | number;
-  xnaChangeAddress: string;
+  xnaChangeAddress: AddressLike;
   xnaChangeSats: bigint | number;
-  qualifierChangeAddress: string;
+  qualifierChangeAddress: AddressLike;
   qualifierChangeAmountRaw: bigint | number;
   nullAssetDestinationMode?: NullAssetDestinationMode;
 }
@@ -147,73 +175,73 @@ export interface StandardAssetTransferTransactionParams extends BaseTransactionP
 }
 
 export interface IssueAssetTransactionParams extends AssetTransactionBaseParams {
-  toAddress: string;
+  toAddress: AddressLike;
   assetName: string;
   quantityRaw: bigint | number;
   units?: number;
   reissuable?: boolean;
   ipfsHash?: string;
   includeOwnerOutput?: boolean;
-  ownerTokenAddress?: string;
+  ownerTokenAddress?: AddressLike;
   ownerTokenName?: string;
 }
 
 export interface IssueSubAssetTransactionParams extends AssetTransactionBaseParams {
-  toAddress: string;
+  toAddress: AddressLike;
   assetName: string;
   quantityRaw: bigint | number;
   units?: number;
   reissuable?: boolean;
   ipfsHash?: string;
-  parentOwnerAddress?: string;
-  ownerTokenAddress?: string;
+  parentOwnerAddress?: AddressLike;
+  ownerTokenAddress?: AddressLike;
 }
 
 export interface IssueDepinTransactionParams extends AssetTransactionBaseParams {
-  toAddress: string;
+  toAddress: AddressLike;
   assetName: string;
   quantityRaw: bigint | number;
   ipfsHash?: string;
-  ownerTokenAddress?: string;
+  ownerTokenAddress?: AddressLike;
   reissuable?: boolean;
 }
 
 export interface IssueUniqueAssetTransactionParams extends AssetTransactionBaseParams {
-  toAddress: string;
+  toAddress: AddressLike;
   rootName: string;
   assetTags: string[];
   ipfsHashes?: Array<string | undefined>;
-  ownerTokenAddress?: string;
+  ownerTokenAddress?: AddressLike;
 }
 
 export interface IssueQualifierTransactionParams extends AssetTransactionBaseParams {
-  toAddress: string;
+  toAddress: AddressLike;
   assetName: string;
   quantityRaw: bigint | number;
   ipfsHash?: string;
-  rootChangeAddress?: string;
+  rootChangeAddress?: AddressLike;
   changeQuantityRaw?: bigint | number;
 }
 
 export interface IssueRestrictedTransactionParams extends AssetTransactionBaseParams {
-  toAddress: string;
+  toAddress: AddressLike;
   assetName: string;
   quantityRaw: bigint | number;
   verifierString: string;
   units?: number;
   reissuable?: boolean;
   ipfsHash?: string;
-  ownerChangeAddress?: string;
+  ownerChangeAddress?: AddressLike;
 }
 
 export interface ReissueTransactionParams extends AssetTransactionBaseParams {
-  toAddress: string;
+  toAddress: AddressLike;
   assetName: string;
   quantityRaw: bigint | number;
   units?: number;
   reissuable?: boolean;
   ipfsHash?: string;
-  ownerChangeAddress?: string;
+  ownerChangeAddress?: AddressLike;
 }
 
 export interface ReissueRestrictedTransactionParams extends ReissueTransactionParams {
@@ -223,9 +251,9 @@ export interface ReissueRestrictedTransactionParams extends ReissueTransactionPa
 export interface FreezeAddressesTransactionParams extends BaseTransactionParams {
   assetName: string;
   operation: FreezeOperation;
-  targetAddresses: string[];
-  ownerChangeAddress: string;
-  xnaChangeAddress?: string;
+  targetAddresses: AddressLike[];
+  ownerChangeAddress: AddressLike;
+  xnaChangeAddress?: AddressLike;
   xnaChangeSats?: bigint | number;
   nullAssetDestinationMode?: NullAssetDestinationMode;
 }
@@ -233,8 +261,8 @@ export interface FreezeAddressesTransactionParams extends BaseTransactionParams 
 export interface FreezeAssetTransactionParams extends BaseTransactionParams {
   assetName: string;
   operation: FreezeOperation;
-  ownerChangeAddress: string;
-  xnaChangeAddress?: string;
+  ownerChangeAddress: AddressLike;
+  xnaChangeAddress?: AddressLike;
   xnaChangeSats?: bigint | number;
 }
 

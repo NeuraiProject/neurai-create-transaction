@@ -25,6 +25,7 @@ import {
 } from './constants.js';
 import { createUnsignedTransaction } from './tx.js';
 import type {
+  AddressLike,
   BuiltTransaction,
   CreateTransactionFromOperationParams,
   FreezeAddressesTransactionParams,
@@ -63,9 +64,9 @@ function buildTransaction(
 
 function appendXnaEnvelope(
   outputs: SerializedTxOutput[],
-  burnAddress?: string,
+  burnAddress?: AddressLike,
   burnAmountSats?: bigint | number,
-  changeAddress?: string,
+  changeAddress?: AddressLike,
   changeSats?: bigint | number
 ): void {
   if (burnAddress && burnAmountSats !== undefined && BigInt(burnAmountSats) > 0n) {
@@ -73,6 +74,12 @@ function appendXnaEnvelope(
   }
   if (changeAddress && changeSats !== undefined && BigInt(changeSats) > 0n) {
     outputs.push(createXnaOutput(changeAddress, changeSats));
+  }
+}
+
+function appendExtraOutputs(outputs: SerializedTxOutput[], extraOutputs?: SerializedTxOutput[]): void {
+  if (extraOutputs?.length) {
+    outputs.push(...extraOutputs);
   }
 }
 
@@ -101,6 +108,7 @@ export function createStandardAssetTransferTransaction(
   for (const transfer of params.transferMessages ?? []) {
     outputs.push(createTransferWithMessageOutput(transfer));
   }
+  appendExtraOutputs(outputs, params.extraOutputs);
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
 
@@ -127,6 +135,7 @@ export function createIssueAssetTransaction(params: IssueAssetTransactionParams)
       ipfsHash: params.ipfsHash
     })
   );
+  appendExtraOutputs(outputs, params.extraOutputs);
 
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
@@ -163,6 +172,7 @@ export function createIssueSubAssetTransaction(
       ipfsHash: params.ipfsHash
     })
   );
+  appendExtraOutputs(outputs, params.extraOutputs);
 
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
@@ -205,6 +215,7 @@ export function createIssueUniqueAssetTransaction(
       })
     );
   }
+  appendExtraOutputs(outputs, params.extraOutputs);
 
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
@@ -236,6 +247,7 @@ export function createIssueQualifierTransaction(
       ipfsHash: params.ipfsHash
     })
   );
+  appendExtraOutputs(outputs, params.extraOutputs);
 
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
@@ -262,6 +274,7 @@ export function createIssueRestrictedTransaction(
       ipfsHash: params.ipfsHash
     })
   );
+  appendExtraOutputs(outputs, params.extraOutputs);
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
 
@@ -284,6 +297,7 @@ export function createReissueTransaction(params: ReissueTransactionParams): Buil
       ipfsHash: params.ipfsHash
     })
   );
+  appendExtraOutputs(outputs, params.extraOutputs);
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
 
@@ -311,6 +325,7 @@ export function createReissueRestrictedTransaction(
       ipfsHash: params.ipfsHash
     })
   );
+  appendExtraOutputs(outputs, params.extraOutputs);
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
 
@@ -334,6 +349,7 @@ export function createQualifierTagTransaction(params: QualifierTagTransactionPar
       )
     );
   }
+  appendExtraOutputs(outputs, params.extraOutputs);
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
 
@@ -354,6 +370,7 @@ export function createFreezeAddressesTransaction(
       )
     );
   }
+  appendExtraOutputs(outputs, params.extraOutputs);
 
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
@@ -365,6 +382,7 @@ export function createFreezeAssetTransaction(
   appendXnaEnvelope(outputs, undefined, undefined, params.xnaChangeAddress, params.xnaChangeSats);
   outputs.push(createOwnerAssetTransferOutput(params.ownerChangeAddress, getOwnerTokenName(params.assetName)));
   outputs.push(createGlobalRestrictionOutput(params.assetName, freezeFlagFromOperation(params.operation) + 2));
+  appendExtraOutputs(outputs, params.extraOutputs);
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
 

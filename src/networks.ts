@@ -1,4 +1,5 @@
-import type { SupportedNetwork } from './types.js';
+import { resolveAddressInput } from './address-input.js';
+import type { AddressLike, SupportedNetwork } from './types.js';
 
 export const LEGACY_MAINNET_PREFIX = 53;
 export const LEGACY_TESTNET_PREFIX = 127;
@@ -25,8 +26,8 @@ export const XNA_REISSUE_PREFIX = new Uint8Array([
   0x72, 0x76, 0x6e, 0x72
 ]);
 
-export function inferNetworkFromAddress(address: string): SupportedNetwork {
-  const normalized = String(address || '').trim().toLowerCase();
+export function inferNetworkFromAddress(address: AddressLike): SupportedNetwork {
+  const normalized = resolveAddressInput(address).toLowerCase();
   if (normalized.startsWith(PQ_MAINNET_HRP + '1')) return 'xna-pq';
   if (normalized.startsWith(PQ_TESTNET_HRP + '1')) return 'xna-pq-test';
   if (normalized.startsWith('n')) return 'xna';

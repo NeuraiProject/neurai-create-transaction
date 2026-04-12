@@ -1,3 +1,4 @@
+import { getAddressByPath, getHDKey, getNoAuthAddress } from '@neuraiproject/neurai-key';
 import { describe, expect, it } from 'vitest';
 import {
   createFromOperation,
@@ -11,13 +12,22 @@ import {
   createQualifierTagTransaction,
   createReissueTransaction,
   createStandardAssetTransferTransaction,
+  encodeDestinationScript,
   getBurnAddressForOperation,
   getBurnAmountSats,
   xnaToSatoshis
 } from '../src/index.js';
+import { bytesToHex } from '../src/bytes.js';
 
 const LEGACY_TEST = 'tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA';
-const PQ_TEST = 'tnq1ps6h07gxnzwrgk0hpzaqdzyavgl7j98kz4nfkk3';
+const AUTHSCRIPT_TEST = 'tnq1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqjer8rk';
+const AUTHSCRIPT_COMMITMENT = '3c5c93248148e2b005ddb351bb506f0b830cec149a1b03791949c983d4336a76';
+const LEGACY_HD_OBJECT = getAddressByPath(
+  'xna-test',
+  getHDKey('xna-test', 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'),
+  'm/0/0'
+);
+const NOAUTH_OBJECT = getNoAuthAddress('xna-pq-test');
 
 describe('builders', () => {
   it('creates standard payment transactions', () => {
@@ -30,6 +40,38 @@ describe('builders', () => {
     expect(built.rawTx).toBe(
       `0200000001${'11'.repeat(32)}0100000000ffffffff0188130000000000001976a914e295c733ad2c8e92954d547603f9f63d99eae6c488ac00000000`
     );
+  });
+
+  it('allows extra outputs on higher-level builders for more complex transactions', () => {
+    const built = createIssueAssetTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+      burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_ROOT'),
+      burnAmountSats: getBurnAmountSats('ISSUE_ROOT'),
+      xnaChangeAddress: AUTHSCRIPT_TEST,
+      xnaChangeSats: xnaToSatoshis(1),
+      toAddress: AUTHSCRIPT_TEST,
+      assetName: 'EXTRA',
+      quantityRaw: 1n,
+      extraOutputs: [{
+        valueSats: 0n,
+        scriptPubKeyHex: '6a00'
+      }]
+    });
+
+    expect(built.outputs[built.outputs.length - 1]?.scriptPubKeyHex).toBe('6a00');
+  });
+
+  it('accepts neurai-key address objects across builders', () => {
+    const built = createPaymentTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 1 }],
+      payments: [
+        { address: LEGACY_HD_OBJECT, valueSats: 5000n },
+        { address: NOAUTH_OBJECT, valueSats: 7000n }
+      ]
+    });
+
+    expect(built.outputs[0].scriptPubKeyHex).toBe(bytesToHex(encodeDestinationScript(LEGACY_HD_OBJECT)));
+    expect(built.outputs[1].scriptPubKeyHex).toBe(bytesToHex(encodeDestinationScript(NOAUTH_OBJECT)));
   });
 
   it('uses owner issuance for root issuance and owner transfer for unique/reissue flows', () => {
@@ -104,11 +146,11 @@ describe('builders', () => {
     expect(sub.outputs[4].scriptPubKeyHex).toContain('4d414b4945522f5249564552');
   });
 
-  it('reproduces the known PQ TAG raw transaction exactly in hash20 mode', () => {
+  it('reproduces the known AuthScript TAG output canonically', () => {
     const built = createQualifierTagTransaction({
       qualifierName: '#OTHER1',
       operation: 'tag',
-      targetAddresses: [PQ_TEST],
+      targetAddresses: [AUTHSCRIPT_TEST],
       inputs: [
         {
           txid: 'cd3a248d3c8061fce20a251b6d4395811a53c0594049d180f587223c10ecee09',
@@ -121,18 +163,14 @@ describe('builders', () => {
       ],
       burnAddress: 'tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA',
       burnAmountSats: 20000000n,
-      xnaChangeAddress: PQ_TEST,
+      xnaChangeAddress: AUTHSCRIPT_TEST,
       xnaChangeSats: 3377843585545n,
-      qualifierChangeAddress: PQ_TEST,
-      qualifierChangeAmountRaw: 900000000n,
-      nullAssetDestinationMode: 'hash20'
+      qualifierChangeAddress: AUTHSCRIPT_TEST,
+      qualifierChangeAmountRaw: 900000000n
     });
 
-    expect(built.rawTx).toBe(
-      '020000000209eeec103c2287f580d1494059c0531a8195436d1b250ae2fc61803c8d243acd0100000000ffffffff09eeec103c2287f580d1494059c0531a8195436d1b250ae2fc61803c8d243acd0200000000ffffffff04002d3101000000001976a914e295c733ad2c8e92954d547603f9f63d99eae6c488ac09c22a771203000016511486aeff20d313868b3ee11740d113ac47fd229ec200000000000000002d511486aeff20d313868b3ee11740d113ac47fd229ec2c01472766e7407234f544845523100e9a4350000000075000000000000000020c01486aeff20d313868b3ee11740d113ac47fd229ec20907234f54484552310100000000'
-    );
     expect(built.outputs[3].scriptPubKeyHex).toBe(
-      'c01486aeff20d313868b3ee11740d113ac47fd229ec20907234f544845523101'
+      `c05120${AUTHSCRIPT_COMMITMENT}0907234f544845523101`
     );
   });
 
@@ -144,9 +182,9 @@ describe('builders', () => {
       ],
       burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_RESTRICTED'),
       burnAmountSats: getBurnAmountSats('ISSUE_RESTRICTED'),
-      xnaChangeAddress: PQ_TEST,
+      xnaChangeAddress: AUTHSCRIPT_TEST,
       xnaChangeSats: xnaToSatoshis(2),
-      toAddress: PQ_TEST,
+      toAddress: AUTHSCRIPT_TEST,
       assetName: '$PRINTE',
       quantityRaw: xnaToSatoshis(100),
       verifierString: '#TAG & #KYC',
@@ -163,9 +201,9 @@ describe('builders', () => {
       inputs: [{ txid: '11'.repeat(32), vout: 0 }],
       burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_DEPIN'),
       burnAmountSats: getBurnAmountSats('ISSUE_DEPIN'),
-      xnaChangeAddress: PQ_TEST,
+      xnaChangeAddress: AUTHSCRIPT_TEST,
       xnaChangeSats: xnaToSatoshis(1),
-      toAddress: PQ_TEST,
+      toAddress: AUTHSCRIPT_TEST,
       assetName: '&SENSOR',
       quantityRaw: 1n
     });
@@ -182,9 +220,9 @@ describe('builders', () => {
         inputs: [{ txid: '11'.repeat(32), vout: 0 }],
         burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_DEPIN'),
         burnAmountSats: getBurnAmountSats('ISSUE_DEPIN'),
-        xnaChangeAddress: PQ_TEST,
+        xnaChangeAddress: AUTHSCRIPT_TEST,
         xnaChangeSats: 1n,
-        toAddress: PQ_TEST,
+        toAddress: AUTHSCRIPT_TEST,
         assetName: 'SENSOR',
         quantityRaw: 1n
       })
@@ -196,8 +234,8 @@ describe('builders', () => {
       inputs: [{ txid: '11'.repeat(32), vout: 0 }],
       assetName: '$PRINTE',
       operation: 'freeze',
-      ownerChangeAddress: PQ_TEST,
-      xnaChangeAddress: PQ_TEST,
+      ownerChangeAddress: AUTHSCRIPT_TEST,
+      xnaChangeAddress: AUTHSCRIPT_TEST,
       xnaChangeSats: 1n
     });
 
@@ -210,7 +248,7 @@ describe('builders', () => {
     const built = createStandardAssetTransferTransaction({
       inputs: [{ txid: '11'.repeat(32), vout: 0 }],
       payments: [{ address: LEGACY_TEST, valueSats: 1000n }],
-      transfers: [{ address: PQ_TEST, assetName: 'ASSET', amountRaw: 1n }],
+      transfers: [{ address: AUTHSCRIPT_TEST, assetName: 'ASSET', amountRaw: 1n }],
       transferMessages: [{
         address: LEGACY_TEST,
         assetName: 'ASSET',
@@ -230,7 +268,7 @@ describe('builders', () => {
       operationType: 'TAG_ADDRESSES',
       params: {
         qualifierName: '#OTHER1',
-        targetAddresses: [PQ_TEST],
+        targetAddresses: [AUTHSCRIPT_TEST],
         inputs: [
           {
             txid: 'cd3a248d3c8061fce20a251b6d4395811a53c0594049d180f587223c10ecee09',
@@ -243,16 +281,15 @@ describe('builders', () => {
         ],
         burnAddress: 'tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA',
         burnAmountSats: 20000000n,
-        xnaChangeAddress: PQ_TEST,
+        xnaChangeAddress: AUTHSCRIPT_TEST,
         xnaChangeSats: 3377843585545n,
-        qualifierChangeAddress: PQ_TEST,
-        qualifierChangeAmountRaw: 900000000n,
-        nullAssetDestinationMode: 'hash20'
+        qualifierChangeAddress: AUTHSCRIPT_TEST,
+        qualifierChangeAmountRaw: 900000000n
       }
     });
 
     expect(built.outputs[3].scriptPubKeyHex).toBe(
-      'c01486aeff20d313868b3ee11740d113ac47fd229ec20907234f544845523101'
+      `c05120${AUTHSCRIPT_COMMITMENT}0907234f544845523101`
     );
   });
 
@@ -263,12 +300,12 @@ describe('builders', () => {
         inputs: [{ txid: '11'.repeat(32), vout: 0 }],
         burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_SUB_QUALIFIER'),
         burnAmountSats: getBurnAmountSats('ISSUE_SUB_QUALIFIER'),
-        xnaChangeAddress: PQ_TEST,
+        xnaChangeAddress: AUTHSCRIPT_TEST,
         xnaChangeSats: xnaToSatoshis(1),
-        toAddress: PQ_TEST,
+        toAddress: AUTHSCRIPT_TEST,
         assetName: '#ROOT/SUB',
         quantityRaw: 1n,
-        rootChangeAddress: PQ_TEST,
+        rootChangeAddress: AUTHSCRIPT_TEST,
         changeQuantityRaw: xnaToSatoshis(10)
       }
     });

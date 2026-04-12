@@ -21,6 +21,7 @@ import {
 } from './networks.js';
 import { OWNER_ASSET_AMOUNT } from './constants.js';
 import type {
+  AddressLike,
   AssetIssueOutputParams,
   AssetReissueOutputParams,
   NullAssetDestinationMode,
@@ -62,7 +63,7 @@ export function encodeAssetTransferPayload(
 }
 
 export function encodeAssetTransferScript(
-  address: string,
+  address: AddressLike,
   assetName: string,
   amountRaw: bigint | number,
   message?: string,
@@ -94,7 +95,7 @@ export function encodeNewAssetPayload(
 }
 
 export function encodeNewAssetScript(
-  address: string,
+  address: AddressLike,
   assetName: string,
   quantityRaw: bigint | number,
   units = 0,
@@ -116,7 +117,7 @@ export function encodeOwnerAssetPayload(ownerTokenName: string): Uint8Array {
   );
 }
 
-export function encodeOwnerAssetScript(address: string, ownerTokenName: string): Uint8Array {
+export function encodeOwnerAssetScript(address: AddressLike, ownerTokenName: string): Uint8Array {
   return concatBytes(
     encodeDestinationScript(address),
     Uint8Array.of(OP_XNA_ASSET),
@@ -142,7 +143,7 @@ export function encodeReissueAssetPayload(
 }
 
 export function encodeReissueAssetScript(
-  address: string,
+  address: AddressLike,
   assetName: string,
   quantityRaw: bigint | number,
   units = 0,
@@ -177,7 +178,7 @@ export function encodeNullAssetTagPayload(
 }
 
 export function encodeNullAssetTagScript(
-  address: string,
+  address: AddressLike,
   qualifierName: string,
   operation: TagOperation,
   mode: NullAssetDestinationMode = 'strict'
@@ -189,7 +190,7 @@ export function encodeNullAssetTagScript(
 }
 
 export function encodeNullAssetRestrictionScript(
-  address: string,
+  address: AddressLike,
   assetName: string,
   freezeFlag: number,
   mode: NullAssetDestinationMode = 'strict'
@@ -221,7 +222,7 @@ export function encodeGlobalRestrictionScript(
   );
 }
 
-export function createXnaOutput(address: string, valueSats: bigint | number): SerializedTxOutput {
+export function createXnaOutput(address: AddressLike, valueSats: bigint | number): SerializedTxOutput {
   return {
     valueSats: typeof valueSats === 'bigint' ? valueSats : BigInt(valueSats),
     scriptPubKeyHex: bytesToHex(encodeDestinationScript(address))
@@ -229,7 +230,7 @@ export function createXnaOutput(address: string, valueSats: bigint | number): Se
 }
 
 export function createAssetTransferOutput(
-  address: string,
+  address: AddressLike,
   assetName: string,
   amountRaw: bigint | number
 ): SerializedTxOutput {
@@ -257,7 +258,7 @@ export function createTransferWithMessageOutput(
 }
 
 export function createOwnerAssetIssueOutput(
-  address: string,
+  address: AddressLike,
   ownerTokenName: string
 ): SerializedTxOutput {
   return {
@@ -267,7 +268,7 @@ export function createOwnerAssetIssueOutput(
 }
 
 export function createOwnerAssetTransferOutput(
-  address: string,
+  address: AddressLike,
   ownerTokenName: string
 ): SerializedTxOutput {
   return {
@@ -309,7 +310,7 @@ export function createReissueAssetOutput(params: AssetReissueOutputParams): Seri
 }
 
 export function createNullAssetTagOutput(
-  address: string,
+  address: AddressLike,
   qualifierName: string,
   operation: TagOperation,
   mode: NullAssetDestinationMode = 'strict'
@@ -321,7 +322,7 @@ export function createNullAssetTagOutput(
 }
 
 export function createNullAssetRestrictionOutput(
-  address: string,
+  address: AddressLike,
   assetName: string,
   freezeFlag: number,
   mode: NullAssetDestinationMode = 'strict'

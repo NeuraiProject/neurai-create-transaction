@@ -7,7 +7,7 @@ Current scope:
 
 - serialize unsigned raw transactions
 - create standard XNA payment transactions
-- encode XNA outputs for legacy and PQ destinations
+- encode XNA outputs for legacy and AuthScript witness-v1 destinations
 - encode asset transfers and `transferwithmessage`
 - encode asset issue, owner, reissue, verifier and null-asset scripts
 - build expanded transactions for:
@@ -27,6 +27,17 @@ It now also exposes `createFromOperation(...)`, a typed dispatcher for consumers
 that already know the high-level operation type and want a stable bridge into
 raw transaction serialization without inferring which builder to call.
 
+Address-taking APIs accept either a plain address string or a direct object from
+`@neuraiproject/neurai-key` such as:
+
+- `IAddressObject`
+- `IPQAddressObject`
+- `INoAuthAddressObject`
+- `ILegacyAuthScriptAddressObject`
+
+Internally only the `.address` field is needed, so consumers can pass the
+original object returned by `neurai-key` without flattening it first.
+
 Build outputs:
 
 - `dist/index.js`: ESM
@@ -36,11 +47,13 @@ Build outputs:
 
 For PQ null-asset outputs there are two modes:
 
-- `strict`: emits `OP_XNA_ASSET OP_1 <20-byte-hash> ...`
-- `hash20`: emits `OP_XNA_ASSET <20-byte-hash> ...`
+- `strict`: canonical AuthScript form, emits `OP_XNA_ASSET OP_1 <32-byte-commitment> ...`
+- `hash20`: legacy compatibility form, emits `OP_XNA_ASSET <20-byte-hash> ...`
 
-`strict` matches the intended PQ round-trip tests in the node code. `hash20`
-is useful to reproduce current raw transactions while investigating PQ tag bugs.
+For AuthScript destinations (`nq1...` / `tnq1...`), the node now only accepts
+the canonical `strict` form. Requesting `hash20` for an AuthScript address
+throws. Legacy base58 addresses still encode null-asset destinations as 20-byte
+hash pushes.
 
 ## Supported operations
 
@@ -88,6 +101,7 @@ would normally derive internally from asset RPC JSON.
 ## Example
 
 ```ts
+import { getNoAuthAddress } from '@neuraiproject/neurai-key';
 import {
   createIssueRestrictedTransaction,
   createQualifierTagTransaction,
@@ -96,6 +110,10 @@ import {
   xnaToSatoshis
 } from './dist/index.js';
 
+const vault = getNoAuthAddress('xna-pq-test', {
+  witnessScript: '51'
+});
+
 const restricted = createIssueRestrictedTransaction({
   inputs: [
     { txid: '...', vout: 0 },
@@ -103,9 +121,9 @@ const restricted = createIssueRestrictedTransaction({
   ],
   burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_RESTRICTED'),
   burnAmountSats: getBurnAmountSats('ISSUE_RESTRICTED'),
-  xnaChangeAddress: 'tnq1...',
+  xnaChangeAddress: vault,
   xnaChangeSats: xnaToSatoshis(12.5),
-  toAddress: 'tnq1...',
+  toAddress: vault,
   assetName: '$SECURITY',
   quantityRaw: xnaToSatoshis(1000),
   verifierString: '#KYC & #ACCREDITED',
@@ -120,17 +138,33 @@ const tag = createQualifierTagTransaction({
   ],
   qualifierName: '#KYC',
   operation: 'tag',
-  targetAddresses: ['tnq1...'],
+  targetAddresses: [vault],
   burnAddress: getBurnAddressForOperation('xna-pq-test', 'TAG_ADDRESS'),
   burnAmountSats: getBurnAmountSats('TAG_ADDRESS'),
-  xnaChangeAddress: 'tnq1...',
+  xnaChangeAddress: vault,
   xnaChangeSats: xnaToSatoshis(4),
-  qualifierChangeAddress: 'tnq1...',
+  qualifierChangeAddress: vault,
   qualifierChangeAmountRaw: xnaToSatoshis(9)
+});
+
+const withCustomTail = createIssueRestrictedTransaction({
+  inputs: [{ txid: '...', vout: 0 }],
+  burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_RESTRICTED'),
+  burnAmountSats: getBurnAmountSats('ISSUE_RESTRICTED'),
+  xnaChangeAddress: vault,
+  xnaChangeSats: xnaToSatoshis(1),
+  toAddress: vault,
+  assetName: '$SECURITY',
+  quantityRaw: xnaToSatoshis(10),
+  verifierString: '#KYC',
+  extraOutputs: [
+    { valueSats: 0n, scriptPubKeyHex: '6a00' }
+  ]
 });
 
 console.log(restricted.rawTx);
 console.log(tag.rawTx);
+console.log(withCustomTail.rawTx);
 ```
 
 ## Bridging from upstream metadata
@@ -164,12 +198,17 @@ const built = createFromOperation({
 ## Notes
 
 - This package mirrors the node's expanded physical outputs, not the RPC JSON.
+- Any `nq1...` / `tnq1...` destination is treated as AuthScript `witness v1`
+  with a 32-byte commitment. The removed 20-byte PQ keyhash format is not
+  supported anymore.
+- `resolveAddressInput(...)` is exported for consumers that want to normalize a
+  string-or-object address input before storing or logging it.
 - `ISSUE_DEPIN` is modeled as its own operation even though today it shares the
   same burn address and cost as `ISSUE_UNIQUE`. That keeps future burn changes
   isolated to DEPIN.
 - The global bundle exposes `globalThis.NeuraiCreateTransaction`.
 - `createUnsignedTransaction(...)` still lets you build arbitrary transactions
   from pre-serialized outputs.
-- `strict` vs `hash20` for PQ null-asset outputs is kept because the current
-  node behavior around PQ tag outputs is still under investigation.
+- High-level builders now accept `extraOutputs` so callers can append custom
+  outputs without dropping to fully manual transaction assembly.
 - UTXO selection, fee estimation and signing remain outside this package.

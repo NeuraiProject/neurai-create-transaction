@@ -263,6 +263,71 @@ describe('builders', () => {
     expect(built.outputs[2].scriptPubKeyHex).toContain('54209c2c8e121a0139ba39bffd3ca97267bca9d4c0c1e84ac0c34a883c28e7a912ca');
   });
 
+  it('preserves output order with transfersToScript: payments, transfers, transferMessages, transfersToScript, extraOutputs', () => {
+    // Covenant scriptPubKey fixture — see tests/assets.test.ts for provenance.
+    const COVENANT_SPK_FIXTURE_HEX =
+      '6376a914e295c733ad2c8e92954d547603f9f63d99eae6c488ac67760400e1f5059500cc7ca26900cd1976a914e295c733ad2c8e92954d547603f9f63d99eae6c488ac88765152ce885151ce034341548852cd53b6885251ce03434154885252ce780052cf7c9488755168';
+
+    const built = createStandardAssetTransferTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+      payments: [{ address: LEGACY_TEST, valueSats: 1000n }],
+      transfers: [{ address: LEGACY_TEST, assetName: 'ASSET', amountRaw: 1n }],
+      transferMessages: [{
+        address: LEGACY_TEST,
+        assetName: 'ASSET',
+        amountRaw: 1n,
+        message: '9c2c8e121a0139ba39bffd3ca97267bca9d4c0c1e84ac0c34a883c28e7a912ca',
+        expireTime: 123n
+      }],
+      transfersToScript: [
+        { scriptPubKeyHex: COVENANT_SPK_FIXTURE_HEX, assetName: 'CAT', amountRaw: 100n }
+      ],
+      extraOutputs: [{ valueSats: 0n, scriptPubKeyHex: '6a0474657374' }] // OP_RETURN "test"
+    });
+
+    expect(built.outputs).toHaveLength(5);
+
+    // [0] XNA payment
+    expect(built.outputs[0].valueSats).toBe(1000n);
+
+    // [1] transfer (address-based asset transfer)
+    expect(built.outputs[1].scriptPubKeyHex).toContain('72766e74054153534554');
+
+    // [2] transferWithMessage (preserves index checked by existing test at line 263)
+    expect(built.outputs[2].scriptPubKeyHex).toContain(
+      '54209c2c8e121a0139ba39bffd3ca97267bca9d4c0c1e84ac0c34a883c28e7a912ca'
+    );
+
+    // [3] transferToScript (NEW): starts with the covenant spk verbatim
+    expect(built.outputs[3].scriptPubKeyHex.startsWith(COVENANT_SPK_FIXTURE_HEX)).toBe(true);
+    expect(built.outputs[3].valueSats).toBe(0n);
+
+    // [4] extraOutputs (preserves last position)
+    expect(built.outputs[4].scriptPubKeyHex).toBe('6a0474657374');
+  });
+
+  it('backwards-compat: omitting transfersToScript leaves existing 3-output order intact', () => {
+    // Reproduces the original test at builders.test.ts line 247 unchanged.
+    const built = createStandardAssetTransferTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+      payments: [{ address: LEGACY_TEST, valueSats: 1000n }],
+      transfers: [{ address: AUTHSCRIPT_TEST, assetName: 'ASSET', amountRaw: 1n }],
+      transferMessages: [{
+        address: LEGACY_TEST,
+        assetName: 'ASSET',
+        amountRaw: 1n,
+        message: '9c2c8e121a0139ba39bffd3ca97267bca9d4c0c1e84ac0c34a883c28e7a912ca',
+        expireTime: 123n
+      }]
+    });
+
+    expect(built.outputs).toHaveLength(3);
+    expect(built.outputs[1].scriptPubKeyHex).toContain('72766e74054153534554');
+    expect(built.outputs[2].scriptPubKeyHex).toContain(
+      '54209c2c8e121a0139ba39bffd3ca97267bca9d4c0c1e84ac0c34a883c28e7a912ca'
+    );
+  });
+
   it('dispatches tag operations from explicit operation metadata', () => {
     const built = createFromOperation({
       operationType: 'TAG_ADDRESSES',

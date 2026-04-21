@@ -3,6 +3,8 @@ import {
   bytesToHex,
   compactSize,
   concatBytes,
+  ensureHex,
+  hexToBytes,
   i64LE,
   pushData,
   serializeString,
@@ -28,6 +30,7 @@ import type {
   SerializedTxOutput,
   TagOperation,
   TransferOutputParams,
+  TransferToScriptOutputParams,
   TransferWithMessageOutputParams
 } from './types.js';
 
@@ -71,6 +74,39 @@ export function encodeAssetTransferScript(
 ): Uint8Array {
   return concatBytes(
     encodeDestinationScript(address),
+    Uint8Array.of(OP_XNA_ASSET),
+    pushData(encodeAssetTransferPayload(assetName, amountRaw, message, expireTime)),
+    Uint8Array.of(OP_DROP)
+  );
+}
+
+/**
+ * Like `encodeAssetTransferScript` but takes a raw scriptPubKey instead of
+ * deriving one from an address. Useful for asset outputs that pay to a
+ * covenant scriptPubKey, a bare non-standard lock, or any prefix for which
+ * the caller already has the scriptPubKey bytes.
+ *
+ * The asset-transfer wrapper is appended exactly as in the address-based
+ * variant: `<recipientScriptPubKey> OP_XNA_ASSET <pushdata(payload)> OP_DROP`.
+ *
+ * Note: this helper only builds the output. Spending inputs whose scriptPubKey
+ * requires witness data (e.g. P2WSH) is not supported by this package — see
+ * `createUnsignedTransaction`, which serializes legacy pre-segwit format only.
+ */
+export function encodeAssetTransferScriptToScript(
+  recipientScriptPubKey: Uint8Array | string,
+  assetName: string,
+  amountRaw: bigint | number,
+  message?: string,
+  expireTime?: bigint | number
+): Uint8Array {
+  const spkBytes =
+    typeof recipientScriptPubKey === 'string'
+      ? hexToBytes(ensureHex(recipientScriptPubKey, 'recipientScriptPubKey'))
+      : recipientScriptPubKey;
+
+  return concatBytes(
+    spkBytes,
     Uint8Array.of(OP_XNA_ASSET),
     pushData(encodeAssetTransferPayload(assetName, amountRaw, message, expireTime)),
     Uint8Array.of(OP_DROP)
@@ -352,4 +388,26 @@ export function createGlobalRestrictionOutput(
 
 export function createTransferOutput(params: TransferOutputParams): SerializedTxOutput {
   return createAssetTransferOutput(params.address, params.assetName, params.amountRaw);
+}
+
+/**
+ * Build a SerializedTxOutput that locks `amountRaw` of `assetName` under an
+ * arbitrary scriptPubKey. `valueSats` is hardcoded to 0n (asset-only outputs
+ * carry no XNA; matches `createAssetTransferOutput` semantics).
+ */
+export function createAssetTransferToScriptOutput(
+  params: TransferToScriptOutputParams
+): SerializedTxOutput {
+  return {
+    valueSats: 0n,
+    scriptPubKeyHex: bytesToHex(
+      encodeAssetTransferScriptToScript(
+        params.scriptPubKeyHex,
+        params.assetName,
+        params.amountRaw,
+        params.message,
+        params.expireTime
+      )
+    )
+  };
 }

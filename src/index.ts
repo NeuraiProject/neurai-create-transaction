@@ -33,6 +33,7 @@ export type {
   DestinationType,
   TagOperation,
   TransferOutputParams,
+  TransferToScriptOutputParams,
   TransferWithMessageOutputParams,
   TxPaymentOutput,
   TxInput,
@@ -42,6 +43,7 @@ export type {
 export {
   assetUnitsToRaw,
   createAssetTransferOutput,
+  createAssetTransferToScriptOutput,
   createGlobalRestrictionOutput,
   createIssueAssetOutput,
   createNullAssetRestrictionOutput,
@@ -55,6 +57,7 @@ export {
   createXnaOutput,
   encodeAssetTransferPayload,
   encodeAssetTransferScript,
+  encodeAssetTransferScriptToScript,
   encodeGlobalRestrictionScript,
   encodeNewAssetPayload,
   encodeNewAssetScript,

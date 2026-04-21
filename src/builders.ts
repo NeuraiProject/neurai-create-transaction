@@ -1,5 +1,6 @@
 import {
   createAssetTransferOutput,
+  createAssetTransferToScriptOutput,
   createGlobalRestrictionOutput,
   createIssueAssetOutput,
   createNullAssetRestrictionOutput,
@@ -98,6 +99,10 @@ export function createPaymentTransaction(params: PaymentTransactionParams): Buil
 export function createStandardAssetTransferTransaction(
   params: StandardAssetTransferTransactionParams
 ): BuiltTransaction {
+  // Output order is fixed:
+  //   payments → transfers → transferMessages → transfersToScript → extraOutputs.
+  // Keep transfersToScript after transferMessages so indices of existing
+  // callers (payments + transfers + transferMessages) remain stable.
   const outputs: SerializedTxOutput[] = [];
   for (const payment of params.payments ?? []) {
     outputs.push(createXnaOutput(payment.address, payment.valueSats));
@@ -107,6 +112,9 @@ export function createStandardAssetTransferTransaction(
   }
   for (const transfer of params.transferMessages ?? []) {
     outputs.push(createTransferWithMessageOutput(transfer));
+  }
+  for (const transfer of params.transfersToScript ?? []) {
+    outputs.push(createAssetTransferToScriptOutput(transfer));
   }
   appendExtraOutputs(outputs, params.extraOutputs);
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);

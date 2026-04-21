@@ -128,6 +128,23 @@ export interface TransferWithMessageOutputParams extends TransferOutputParams {
   expireTime?: bigint | number;
 }
 
+/**
+ * Parameters for an asset-transfer output that locks under an arbitrary
+ * `scriptPubKey` instead of an address. Used to fund covenants, P2SH or any
+ * bare non-standard lock for which the caller already has the scriptPubKey
+ * bytes. Produces the same `OP_XNA_ASSET + pushdata(payload) + OP_DROP`
+ * wrapper as `TransferOutputParams`, but with the recipient scriptPubKey
+ * provided verbatim.
+ */
+export interface TransferToScriptOutputParams {
+  /** Raw scriptPubKey bytes (hex) that will prefix the asset-transfer wrapper. */
+  scriptPubKeyHex: string;
+  assetName: string;
+  amountRaw: bigint | number;
+  message?: string;
+  expireTime?: bigint | number;
+}
+
 export interface AssetIssueOutputParams {
   address: AddressLike;
   assetName: string;
@@ -172,6 +189,12 @@ export interface StandardAssetTransferTransactionParams extends BaseTransactionP
   payments?: TxPaymentOutput[];
   transfers?: TransferOutputParams[];
   transferMessages?: TransferWithMessageOutputParams[];
+  /**
+   * Asset transfers to a raw scriptPubKey (covenant, P2SH, bare script...).
+   * Output order is fixed:
+   *   payments → transfers → transferMessages → transfersToScript → extraOutputs.
+   */
+  transfersToScript?: TransferToScriptOutputParams[];
 }
 
 export interface IssueAssetTransactionParams extends AssetTransactionBaseParams {

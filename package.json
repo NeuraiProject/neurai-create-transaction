@@ -1,6 +1,6 @@
 {
   "name": "@neuraiproject/neurai-create-transaction",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Local Neurai raw transaction creation helpers for browser and Node environments",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -36,7 +36,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@neuraiproject/neurai-key": "^3.1.0",
+    "@neuraiproject/neurai-key": "^4.0.0",
     "bech32": "^2.0.0",
     "bs58": "^6.0.0",
     "bs58check": "^4.0.0"

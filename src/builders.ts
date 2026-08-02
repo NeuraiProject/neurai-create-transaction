@@ -15,20 +15,26 @@ import {
 } from './assets.js';
 import {
   assertDepinAssetName,
+  assertDepinNetwork,
   getOwnerTokenName,
   getParentAssetName,
   getUniqueAssetName,
+  isDepinAssetName,
   normalizeVerifierString,
   OWNER_ASSET_AMOUNT,
   UNIQUE_ASSET_AMOUNT,
   UNIQUE_ASSETS_REISSUABLE,
   UNIQUE_ASSET_UNITS
 } from './constants.js';
+import { encodeDestinationScript } from './address.js';
+import { bytesToHex } from './bytes.js';
 import { createUnsignedTransaction } from './tx.js';
 import type {
   AddressLike,
   BuiltTransaction,
   CreateTransactionFromOperationParams,
+  DepinSelfRevokeTransactionParams,
+  DepinTransferTransactionParams,
   FreezeAddressesTransactionParams,
   FreezeAssetTransactionParams,
   FreezeOperation,
@@ -88,6 +94,12 @@ function freezeFlagFromOperation(operation: FreezeOperation): number {
   return operation === 'freeze' ? 1 : 0;
 }
 
+// Compare by decoded destination script, not by address text: two encodings of
+// the same destination (e.g. different Bech32 case) must count as equal.
+function sameDestination(a: AddressLike, b: AddressLike): boolean {
+  return bytesToHex(encodeDestinationScript(a)) === bytesToHex(encodeDestinationScript(b));
+}
+
 export function createPaymentTransaction(params: PaymentTransactionParams): BuiltTransaction {
   const outputs = [
     ...params.payments.map((payment) => createXnaOutput(payment.address, payment.valueSats)),
@@ -123,6 +135,9 @@ export function createStandardAssetTransferTransaction(
 export function createIssueAssetTransaction(params: IssueAssetTransactionParams): BuiltTransaction {
   const outputs: SerializedTxOutput[] = [];
   appendXnaEnvelope(outputs, params.burnAddress, params.burnAmountSats, params.xnaChangeAddress, params.xnaChangeSats);
+  // Consensus locates issuance outputs positionally (issue at vout[n-1], owner
+  // at vout[n-2]), so extraOutputs must come before them, not after.
+  appendExtraOutputs(outputs, params.extraOutputs);
 
   if (params.includeOwnerOutput ?? true) {
     outputs.push(
@@ -143,7 +158,6 @@ export function createIssueAssetTransaction(params: IssueAssetTransactionParams)
       ipfsHash: params.ipfsHash
     })
   );
-  appendExtraOutputs(outputs, params.extraOutputs);
 
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
@@ -158,6 +172,7 @@ export function createIssueSubAssetTransaction(
 
   const outputs: SerializedTxOutput[] = [];
   appendXnaEnvelope(outputs, params.burnAddress, params.burnAmountSats, params.xnaChangeAddress, params.xnaChangeSats);
+  appendExtraOutputs(outputs, params.extraOutputs);
   outputs.push(
     createOwnerAssetTransferOutput(
       params.parentOwnerAddress ?? params.xnaChangeAddress ?? params.toAddress,
@@ -180,16 +195,33 @@ export function createIssueSubAssetTransaction(
       ipfsHash: params.ipfsHash
     })
   );
-  appendExtraOutputs(outputs, params.extraOutputs);
 
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
 
 export function createIssueDepinTransaction(params: IssueDepinTransactionParams): BuiltTransaction {
   assertDepinAssetName(params.assetName);
+  assertDepinNetwork(params.network);
+  if (BigInt(params.quantityRaw) <= 0n) {
+    throw new Error('DEPIN issue quantity must be positive');
+  }
   if (params.reissuable !== undefined && typeof params.reissuable !== 'boolean') {
     throw new Error('DEPIN reissuable must be boolean when provided');
   }
+
+  // A sub-DEPIN ("&X/Y") must transfer the immediate parent's owner token in
+  // the issuing transaction, exactly like sub-assets. It stays AssetType DEPIN
+  // (same burn as the root), so only the output layout follows the sub flow.
+  if (getParentAssetName(params.assetName)) {
+    return createIssueSubAssetTransaction({
+      ...params,
+      units: 0,
+      reissuable: params.reissuable ?? true,
+      parentOwnerAddress: params.parentOwnerAddress,
+      ownerTokenAddress: params.ownerTokenAddress ?? params.toAddress
+    });
+  }
+
   return createIssueAssetTransaction({
     ...params,
     units: 0,
@@ -199,11 +231,71 @@ export function createIssueDepinTransaction(params: IssueDepinTransactionParams)
   });
 }
 
+export function createDepinTransferTransaction(params: DepinTransferTransactionParams): BuiltTransaction {
+  assertDepinNetwork(params.network);
+  if (!params.transfers?.length) {
+    throw new Error('DEPIN transfer requires at least one transfer');
+  }
+  const assetName = params.transfers[0].assetName;
+  assertDepinAssetName(assetName);
+  for (const transfer of params.transfers) {
+    if (transfer.assetName !== assetName) {
+      throw new Error(
+        `DEPIN transfers must all move the same asset (got ${transfer.assetName} and ${assetName}); build one transaction per DEPIN asset`
+      );
+    }
+    if (BigInt(transfer.amountRaw) <= 0n) {
+      throw new Error(`DEPIN transfer amount must be positive: ${assetName}`);
+    }
+  }
+
+  const outputs: SerializedTxOutput[] = [];
+  for (const transfer of params.transfers) {
+    outputs.push(createTransferOutput(transfer));
+  }
+  // Soulbound escort: consensus also requires SPENDING an "&X!" UTXO, which
+  // must be present in params.inputs (this package does not select UTXOs).
+  outputs.push(
+    createOwnerAssetTransferOutput(params.ownerChangeAddress, getOwnerTokenName(assetName))
+  );
+  appendXnaEnvelope(outputs, undefined, undefined, params.xnaChangeAddress, params.xnaChangeSats);
+  appendExtraOutputs(outputs, params.extraOutputs);
+  return buildTransaction(params.version, params.locktime, params.inputs, outputs);
+}
+
+export function createDepinSelfRevokeTransaction(
+  params: DepinSelfRevokeTransactionParams
+): BuiltTransaction {
+  assertDepinAssetName(params.assetName);
+  assertDepinNetwork(params.network);
+  if (BigInt(params.amountRaw) <= 0n) {
+    throw new Error('DEPIN self-revoke amount must be positive');
+  }
+
+  // Exact consensus pattern: one self-transfer of "&X" back to the holder plus
+  // one null-data with flag 1 (the only valid flag without the owner token).
+  // No owner token, no burn. The input-side rules live on the caller — see
+  // DepinSelfRevokeTransactionParams.
+  const outputs: SerializedTxOutput[] = [
+    createAssetTransferOutput(params.holderAddress, params.assetName, params.amountRaw),
+    createNullAssetRestrictionOutput(
+      params.holderAddress,
+      params.assetName,
+      1,
+      params.nullAssetDestinationMode ?? 'strict'
+    )
+  ];
+  appendXnaEnvelope(outputs, undefined, undefined, params.xnaChangeAddress, params.xnaChangeSats);
+  appendExtraOutputs(outputs, params.extraOutputs);
+  return buildTransaction(params.version, params.locktime, params.inputs, outputs);
+}
+
 export function createIssueUniqueAssetTransaction(
   params: IssueUniqueAssetTransactionParams
 ): BuiltTransaction {
   const outputs: SerializedTxOutput[] = [];
   appendXnaEnvelope(outputs, params.burnAddress, params.burnAmountSats, params.xnaChangeAddress, params.xnaChangeSats);
+  appendExtraOutputs(outputs, params.extraOutputs);
   outputs.push(
     createOwnerAssetTransferOutput(
       params.ownerTokenAddress ?? params.toAddress,
@@ -223,7 +315,6 @@ export function createIssueUniqueAssetTransaction(
       })
     );
   }
-  appendExtraOutputs(outputs, params.extraOutputs);
 
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
@@ -233,6 +324,7 @@ export function createIssueQualifierTransaction(
 ): BuiltTransaction {
   const outputs: SerializedTxOutput[] = [];
   appendXnaEnvelope(outputs, params.burnAddress, params.burnAmountSats, params.xnaChangeAddress, params.xnaChangeSats);
+  appendExtraOutputs(outputs, params.extraOutputs);
 
   const parentQualifier = getParentAssetName(params.assetName);
   if (parentQualifier) {
@@ -255,7 +347,6 @@ export function createIssueQualifierTransaction(
       ipfsHash: params.ipfsHash
     })
   );
-  appendExtraOutputs(outputs, params.extraOutputs);
 
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
@@ -265,6 +356,7 @@ export function createIssueRestrictedTransaction(
 ): BuiltTransaction {
   const outputs: SerializedTxOutput[] = [];
   appendXnaEnvelope(outputs, params.burnAddress, params.burnAmountSats, params.xnaChangeAddress, params.xnaChangeSats);
+  appendExtraOutputs(outputs, params.extraOutputs);
   outputs.push(createVerifierStringOutput(normalizeVerifierString(params.verifierString)));
   outputs.push(
     createOwnerAssetTransferOutput(
@@ -282,13 +374,28 @@ export function createIssueRestrictedTransaction(
       ipfsHash: params.ipfsHash
     })
   );
-  appendExtraOutputs(outputs, params.extraOutputs);
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
 
 export function createReissueTransaction(params: ReissueTransactionParams): BuiltTransaction {
+  if (isDepinAssetName(params.assetName)) {
+    // DEPIN reissue: units must stay 0 (-1 means "keep"), and the owner-token
+    // change must return to the destination address itself.
+    if (params.units !== undefined && params.units !== 0 && params.units !== -1) {
+      throw new Error('DEPIN reissue units must be 0 or -1 (keep)');
+    }
+    if (
+      params.ownerChangeAddress !== undefined &&
+      !sameDestination(params.ownerChangeAddress, params.toAddress)
+    ) {
+      throw new Error('DEPIN reissue owner change address must match the destination address');
+    }
+  }
+
   const outputs: SerializedTxOutput[] = [];
   appendXnaEnvelope(outputs, params.burnAddress, params.burnAmountSats, params.xnaChangeAddress, params.xnaChangeSats);
+  // Consensus locates the reissue output at vout[n-1]; extraOutputs go first.
+  appendExtraOutputs(outputs, params.extraOutputs);
   outputs.push(
     createOwnerAssetTransferOutput(
       params.ownerChangeAddress ?? params.toAddress,
@@ -305,7 +412,6 @@ export function createReissueTransaction(params: ReissueTransactionParams): Buil
       ipfsHash: params.ipfsHash
     })
   );
-  appendExtraOutputs(outputs, params.extraOutputs);
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
 
@@ -314,6 +420,7 @@ export function createReissueRestrictedTransaction(
 ): BuiltTransaction {
   const outputs: SerializedTxOutput[] = [];
   appendXnaEnvelope(outputs, params.burnAddress, params.burnAmountSats, params.xnaChangeAddress, params.xnaChangeSats);
+  appendExtraOutputs(outputs, params.extraOutputs);
   if (params.verifierString) {
     outputs.push(createVerifierStringOutput(normalizeVerifierString(params.verifierString)));
   }
@@ -333,7 +440,6 @@ export function createReissueRestrictedTransaction(
       ipfsHash: params.ipfsHash
     })
   );
-  appendExtraOutputs(outputs, params.extraOutputs);
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }
 
@@ -364,6 +470,20 @@ export function createQualifierTagTransaction(params: QualifierTagTransactionPar
 export function createFreezeAddressesTransaction(
   params: FreezeAddressesTransactionParams
 ): BuiltTransaction {
+  if (isDepinAssetName(params.assetName)) {
+    // The address holding (or receiving) the owner token cannot be frozen or
+    // revoked. The node also rejects spending an "&X!" UTXO that sits on a
+    // target address — that input-side rule cannot be checked here (inputs
+    // carry no address) and stays the caller's responsibility.
+    for (const target of params.targetAddresses) {
+      if (sameDestination(target, params.ownerChangeAddress)) {
+        throw new Error(
+          'DEPIN owner change address cannot be one of the target addresses (owner-holder address cannot be frozen or revoked)'
+        );
+      }
+    }
+  }
+
   const outputs: SerializedTxOutput[] = [];
   appendXnaEnvelope(outputs, undefined, undefined, params.xnaChangeAddress, params.xnaChangeSats);
   outputs.push(createOwnerAssetTransferOutput(params.ownerChangeAddress, getOwnerTokenName(params.assetName)));
@@ -420,6 +540,10 @@ export function createFromOperation(
       return createReissueTransaction(build.params);
     case 'REISSUE_RESTRICTED':
       return createReissueRestrictedTransaction(build.params);
+    case 'TRANSFER_DEPIN':
+      return createDepinTransferTransaction(build.params);
+    case 'SELF_REVOKE_DEPIN':
+      return createDepinSelfRevokeTransaction(build.params);
     case 'TAG_ADDRESSES':
       return createQualifierTagTransaction({
         ...build.params,

@@ -26,6 +26,8 @@ export type CreateTransactionOperationType =
   | 'ISSUE_RESTRICTED'
   | 'REISSUE'
   | 'REISSUE_RESTRICTED'
+  | 'TRANSFER_DEPIN'
+  | 'SELF_REVOKE_DEPIN'
   | 'TAG_ADDRESSES'
   | 'UNTAG_ADDRESSES'
   | 'FREEZE_ADDRESSES'
@@ -227,6 +229,60 @@ export interface IssueDepinTransactionParams extends AssetTransactionBaseParams 
   ipfsHash?: string;
   ownerTokenAddress?: AddressLike;
   reissuable?: boolean;
+  /**
+   * Where the parent's owner-token change goes when issuing a sub-DEPIN
+   * ("&X/Y" requires transferring the immediate parent's owner token "&X!").
+   * Ignored for root DEPIN names. Defaults like sub-asset issuance:
+   * xnaChangeAddress, then toAddress.
+   */
+  parentOwnerAddress?: AddressLike;
+  /**
+   * Optional target network. DEPIN assets only exist on testnet/regtest, so
+   * passing a mainnet network throws. The chain is decided by the receiving
+   * node, never inferred from addresses; omit to skip the check.
+   */
+  network?: SupportedNetwork;
+}
+
+/**
+ * Soulbound rule: a DEPIN transfer is only valid when the transaction also
+ * SPENDS a UTXO of the owner token "&X!" and carries an "&X!" transfer output.
+ * This builder emits the output; the caller must include the owner-token UTXO
+ * in `inputs` (this package does not select UTXOs).
+ */
+export interface DepinTransferTransactionParams extends BaseTransactionParams {
+  /** Transfers of a single DEPIN asset — all entries must share `assetName`. */
+  transfers: TransferOutputParams[];
+  /**
+   * Destination of the escorting "&X!" owner-token transfer. Must NOT be an
+   * address being frozen/revoked elsewhere in the transaction.
+   */
+  ownerChangeAddress: AddressLike;
+  xnaChangeAddress?: AddressLike;
+  xnaChangeSats?: bigint | number;
+  network?: SupportedNetwork;
+}
+
+/**
+ * Self-revocation: the holder renounces a DEPIN asset without the owner.
+ * Consensus (IsDepinSelfRevocationTransaction) additionally requires, on the
+ * caller's side of the transaction:
+ * - every spent "&X" UTXO comes from `holderAddress` (XNA fee inputs may come
+ *   from anywhere), and at least one is spent;
+ * - no input or output touches the owner token "&X!";
+ * - every "&X" output pays `holderAddress` (beware extraOutputs);
+ * - "&X" is not issued or reissued in the same transaction.
+ */
+export interface DepinSelfRevokeTransactionParams extends BaseTransactionParams {
+  assetName: string;
+  /** Address renouncing the asset: receives the self-transfer and the null-data mark. */
+  holderAddress: AddressLike;
+  /** Full "&X" amount being self-transferred back to `holderAddress`. */
+  amountRaw: bigint | number;
+  xnaChangeAddress?: AddressLike;
+  xnaChangeSats?: bigint | number;
+  nullAssetDestinationMode?: NullAssetDestinationMode;
+  network?: SupportedNetwork;
 }
 
 export interface IssueUniqueAssetTransactionParams extends AssetTransactionBaseParams {
@@ -333,6 +389,14 @@ export type CreateTransactionFromOperationParams =
   | {
       operationType: 'REISSUE_RESTRICTED';
       params: ReissueRestrictedTransactionParams;
+    }
+  | {
+      operationType: 'TRANSFER_DEPIN';
+      params: DepinTransferTransactionParams;
+    }
+  | {
+      operationType: 'SELF_REVOKE_DEPIN';
+      params: DepinSelfRevokeTransactionParams;
     }
   | {
       operationType: 'TAG_ADDRESSES';

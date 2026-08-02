@@ -11,6 +11,8 @@ export type {
   CreateTransactionFromOperationParams,
   CreateTransactionOperationType,
   BurnOperationType,
+  DepinSelfRevokeTransactionParams,
+  DepinTransferTransactionParams,
   FreezeAddressesTransactionParams,
   FreezeAssetTransactionParams,
   FreezeOperation,
@@ -75,6 +77,8 @@ export {
 } from './assets.js';
 
 export {
+  createDepinSelfRevokeTransaction,
+  createDepinTransferTransaction,
   createFreezeAddressesTransaction,
   createFreezeAssetTransaction,
   createFromOperation,
@@ -122,6 +126,8 @@ export {
   getBurnAmountSats,
   getBurnAmountXna,
   assertDepinAssetName,
+  assertDepinNetwork,
+  DEPIN_MAX_NAME_LENGTH,
   getOwnerTokenName,
   getParentAssetName,
   getUniqueAssetName,

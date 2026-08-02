@@ -1,7 +1,10 @@
 import { getAddressByPath, getHDKey, getNoAuthAddress } from '@neuraiproject/neurai-key';
 import { describe, expect, it } from 'vitest';
 import {
+  createDepinSelfRevokeTransaction,
+  createDepinTransferTransaction,
   createFromOperation,
+  createFreezeAddressesTransaction,
   createFreezeAssetTransaction,
   createIssueAssetTransaction,
   createIssueDepinTransaction,
@@ -42,7 +45,7 @@ describe('builders', () => {
     );
   });
 
-  it('allows extra outputs on higher-level builders for more complex transactions', () => {
+  it('keeps issue outputs last when extra outputs are present (consensus reads them positionally)', () => {
     const built = createIssueAssetTransaction({
       inputs: [{ txid: '11'.repeat(32), vout: 0 }],
       burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_ROOT'),
@@ -58,7 +61,32 @@ describe('builders', () => {
       }]
     });
 
-    expect(built.outputs[built.outputs.length - 1]?.scriptPubKeyHex).toBe('6a00');
+    // burn, change, extra, owner (vout[n-2]), issue (vout[n-1])
+    expect(built.outputs).toHaveLength(5);
+    expect(built.outputs[2].scriptPubKeyHex).toBe('6a00');
+    expect(built.outputs[3].scriptPubKeyHex).toContain('72766e6f');
+    expect(built.outputs[4].scriptPubKeyHex).toContain('72766e71');
+  });
+
+  it('keeps the reissue output last when extra outputs are present', () => {
+    const built = createReissueTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+      burnAddress: getBurnAddressForOperation('xna-test', 'REISSUE'),
+      burnAmountSats: getBurnAmountSats('REISSUE'),
+      xnaChangeAddress: LEGACY_TEST,
+      xnaChangeSats: xnaToSatoshis(1),
+      toAddress: LEGACY_TEST,
+      assetName: 'MAKIER',
+      quantityRaw: xnaToSatoshis(4),
+      units: 0,
+      ownerChangeAddress: LEGACY_TEST,
+      extraOutputs: [{ valueSats: 0n, scriptPubKeyHex: '6a00' }]
+    });
+
+    // burn, change, extra, owner transfer, reissue (vout[n-1])
+    expect(built.outputs).toHaveLength(5);
+    expect(built.outputs[2].scriptPubKeyHex).toBe('6a00');
+    expect(built.outputs[4].scriptPubKeyHex).toContain('72766e72');
   });
 
   it('accepts neurai-key address objects across builders', () => {
@@ -227,6 +255,257 @@ describe('builders', () => {
         quantityRaw: 1n
       })
     ).toThrow(/Invalid DEPIN asset name/);
+  });
+
+  it('rejects non-positive DEPIN issue quantities', () => {
+    expect(() =>
+      createIssueDepinTransaction({
+        inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+        burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_DEPIN'),
+        burnAmountSats: getBurnAmountSats('ISSUE_DEPIN'),
+        xnaChangeAddress: AUTHSCRIPT_TEST,
+        xnaChangeSats: 1n,
+        toAddress: AUTHSCRIPT_TEST,
+        assetName: '&SENSOR',
+        quantityRaw: 0n
+      })
+    ).toThrow(/quantity must be positive/);
+  });
+
+  it('rejects DEPIN issuance on mainnet networks when network is provided', () => {
+    for (const network of ['xna', 'xna-pq', 'xna-legacy'] as const) {
+      expect(() =>
+        createIssueDepinTransaction({
+          inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+          burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_DEPIN'),
+          burnAmountSats: getBurnAmountSats('ISSUE_DEPIN'),
+          xnaChangeAddress: AUTHSCRIPT_TEST,
+          xnaChangeSats: 1n,
+          toAddress: AUTHSCRIPT_TEST,
+          assetName: '&SENSOR',
+          quantityRaw: 1n,
+          network
+        })
+      ).toThrow(/only available on testnet\/regtest/);
+    }
+  });
+
+  it('routes sub-DEPIN issuance through the sub-asset flow with the immediate parent owner', () => {
+    const built = createIssueDepinTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }, { txid: '22'.repeat(32), vout: 1 }],
+      burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_DEPIN'),
+      burnAmountSats: getBurnAmountSats('ISSUE_DEPIN'),
+      xnaChangeAddress: AUTHSCRIPT_TEST,
+      xnaChangeSats: xnaToSatoshis(1),
+      toAddress: AUTHSCRIPT_TEST,
+      assetName: '&ABC/DEF/GHI',
+      quantityRaw: 1n,
+      parentOwnerAddress: AUTHSCRIPT_TEST,
+      network: 'xna-pq-test'
+    });
+
+    expect(built.outputs).toHaveLength(5);
+    // [2] transfer of the IMMEDIATE parent owner token "&ABC/DEF!" (not "&ABC!")
+    expect(built.outputs[2].scriptPubKeyHex).toContain('72766e74');
+    expect(built.outputs[2].scriptPubKeyHex).toContain('264142432f44454621');
+    // [3] owner issuance for "&ABC/DEF/GHI!"
+    expect(built.outputs[3].scriptPubKeyHex).toContain('72766e6f');
+    expect(built.outputs[3].scriptPubKeyHex).toContain('264142432f4445462f47484921');
+    // [4] issue output last
+    expect(built.outputs[4].scriptPubKeyHex).toContain('72766e71');
+  });
+
+  it('creates DEPIN transfers with the mandatory owner-token escort output', () => {
+    const built = createDepinTransferTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }, { txid: '22'.repeat(32), vout: 1 }],
+      transfers: [{ address: LEGACY_TEST, assetName: '&SENSOR', amountRaw: 100000000n }],
+      ownerChangeAddress: AUTHSCRIPT_TEST,
+      xnaChangeAddress: AUTHSCRIPT_TEST,
+      xnaChangeSats: 1000n,
+      network: 'xna-pq-test'
+    });
+
+    expect(built.outputs).toHaveLength(3);
+    // [0] "&SENSOR" transfer
+    expect(built.outputs[0].scriptPubKeyHex).toContain('72766e74072653454e534f52');
+    // [1] "&SENSOR!" owner escort
+    expect(built.outputs[1].scriptPubKeyHex).toContain('72766e74082653454e534f5221');
+    // [2] XNA change
+    expect(built.outputs[2].valueSats).toBe(1000n);
+  });
+
+  it('rejects DEPIN transfers mixing assets, with zero amounts, or on mainnet', () => {
+    const base = {
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+      ownerChangeAddress: AUTHSCRIPT_TEST
+    };
+
+    expect(() =>
+      createDepinTransferTransaction({
+        ...base,
+        transfers: [
+          { address: LEGACY_TEST, assetName: '&SENSOR', amountRaw: 1n },
+          { address: LEGACY_TEST, assetName: '&OTHER', amountRaw: 1n }
+        ]
+      })
+    ).toThrow(/same asset/);
+
+    expect(() =>
+      createDepinTransferTransaction({
+        ...base,
+        transfers: [{ address: LEGACY_TEST, assetName: '&SENSOR', amountRaw: 0n }]
+      })
+    ).toThrow(/must be positive/);
+
+    expect(() =>
+      createDepinTransferTransaction({
+        ...base,
+        transfers: [{ address: LEGACY_TEST, assetName: '&SENSOR', amountRaw: 1n }],
+        network: 'xna'
+      })
+    ).toThrow(/only available on testnet\/regtest/);
+  });
+
+  it('creates DEPIN self-revocations: self-transfer plus flag-1 null data, no owner token', () => {
+    const built = createDepinSelfRevokeTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+      assetName: '&SENSOR',
+      holderAddress: AUTHSCRIPT_TEST,
+      amountRaw: 100000000n,
+      xnaChangeAddress: AUTHSCRIPT_TEST,
+      xnaChangeSats: 500n
+    });
+
+    expect(built.outputs).toHaveLength(3);
+    // [0] self-transfer of "&SENSOR" back to the holder
+    expect(built.outputs[0].scriptPubKeyHex).toContain('72766e74072653454e534f52');
+    // [1] null data over the holder with flag 1 (AuthScript form)
+    expect(built.outputs[1].scriptPubKeyHex).toBe(
+      `c05120${AUTHSCRIPT_COMMITMENT}09072653454e534f5201`
+    );
+    // no owner token anywhere
+    for (const output of built.outputs) {
+      expect(output.scriptPubKeyHex).not.toContain('2653454e534f5221');
+      expect(output.scriptPubKeyHex).not.toContain('72766e6f');
+    }
+  });
+
+  it('rejects invalid DEPIN self-revocations', () => {
+    expect(() =>
+      createDepinSelfRevokeTransaction({
+        inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+        assetName: '&SENSOR',
+        holderAddress: AUTHSCRIPT_TEST,
+        amountRaw: 0n
+      })
+    ).toThrow(/must be positive/);
+
+    expect(() =>
+      createDepinSelfRevokeTransaction({
+        inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+        assetName: '&SENSOR',
+        holderAddress: AUTHSCRIPT_TEST,
+        amountRaw: 1n,
+        network: 'xna-legacy'
+      })
+    ).toThrow(/only available on testnet\/regtest/);
+  });
+
+  it('accepts DEPIN reissue units 0 and -1 and rejects other values', () => {
+    const base = {
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+      burnAddress: getBurnAddressForOperation('xna-pq-test', 'REISSUE'),
+      burnAmountSats: getBurnAmountSats('REISSUE'),
+      xnaChangeAddress: AUTHSCRIPT_TEST,
+      xnaChangeSats: xnaToSatoshis(1),
+      toAddress: AUTHSCRIPT_TEST,
+      assetName: '&SENSOR',
+      quantityRaw: 1n
+    };
+
+    const keepUnits = createReissueTransaction({ ...base, units: -1 });
+    const reissueScript = keepUnits.outputs[keepUnits.outputs.length - 1].scriptPubKeyHex;
+    expect(reissueScript).toContain('72766e72');
+    // tail: quantity, units 0xff (-1), reissuable 0x01, OP_DROP
+    expect(reissueScript.endsWith('ff0175')).toBe(true);
+
+    expect(() => createReissueTransaction({ ...base, units: 2 })).toThrow(
+      /DEPIN reissue units must be 0 or -1/
+    );
+  });
+
+  it('forces DEPIN reissue owner change back to the destination address', () => {
+    const base = {
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+      burnAddress: getBurnAddressForOperation('xna-pq-test', 'REISSUE'),
+      burnAmountSats: getBurnAmountSats('REISSUE'),
+      xnaChangeAddress: AUTHSCRIPT_TEST,
+      xnaChangeSats: xnaToSatoshis(1),
+      toAddress: AUTHSCRIPT_TEST,
+      assetName: '&SENSOR',
+      quantityRaw: 1n
+    };
+
+    expect(() =>
+      createReissueTransaction({ ...base, ownerChangeAddress: LEGACY_TEST })
+    ).toThrow(/owner change address must match/);
+
+    const ok = createReissueTransaction({ ...base, ownerChangeAddress: AUTHSCRIPT_TEST });
+    expect(ok.outputs[ok.outputs.length - 1].scriptPubKeyHex).toContain('72766e72');
+  });
+
+  it('builds DEPIN freeze transactions and rejects freezing the owner-change address', () => {
+    const built = createFreezeAddressesTransaction({
+      inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+      assetName: '&SENSOR',
+      operation: 'freeze',
+      targetAddresses: [LEGACY_TEST],
+      ownerChangeAddress: AUTHSCRIPT_TEST,
+      xnaChangeAddress: AUTHSCRIPT_TEST,
+      xnaChangeSats: 1000n
+    });
+
+    expect(built.outputs).toHaveLength(3);
+    // owner escort "&SENSOR!"
+    expect(built.outputs[1].scriptPubKeyHex).toContain('72766e74082653454e534f5221');
+    // null data over the legacy target with flag 1
+    expect(built.outputs[2].scriptPubKeyHex.startsWith('c014')).toBe(true);
+    expect(built.outputs[2].scriptPubKeyHex.endsWith('072653454e534f5201')).toBe(true);
+
+    expect(() =>
+      createFreezeAddressesTransaction({
+        inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+        assetName: '&SENSOR',
+        operation: 'freeze',
+        targetAddresses: [LEGACY_TEST, AUTHSCRIPT_TEST],
+        ownerChangeAddress: AUTHSCRIPT_TEST
+      })
+    ).toThrow(/cannot be one of the target addresses/);
+  });
+
+  it('dispatches DEPIN transfer and self-revoke from explicit operation metadata', () => {
+    const transfer = createFromOperation({
+      operationType: 'TRANSFER_DEPIN',
+      params: {
+        inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+        transfers: [{ address: LEGACY_TEST, assetName: '&SENSOR', amountRaw: 1n }],
+        ownerChangeAddress: AUTHSCRIPT_TEST
+      }
+    });
+    expect(transfer.outputs[1].scriptPubKeyHex).toContain('72766e74082653454e534f5221');
+
+    const selfRevoke = createFromOperation({
+      operationType: 'SELF_REVOKE_DEPIN',
+      params: {
+        inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+        assetName: '&SENSOR',
+        holderAddress: AUTHSCRIPT_TEST,
+        amountRaw: 1n
+      }
+    });
+    expect(selfRevoke.outputs[1].scriptPubKeyHex).toBe(
+      `c05120${AUTHSCRIPT_COMMITMENT}09072653454e534f5201`
+    );
   });
 
   it('creates global freeze transactions with owner return and global restriction output', () => {

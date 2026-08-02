@@ -52,7 +52,9 @@ const BURN_COSTS_XNA: Record<BurnOperationType, number> = {
 };
 
 function resolveNetworkFamily(network: SupportedNetwork): 'mainnet' | 'testnet' {
-  return network === 'xna' || network === 'xna-pq' ? 'mainnet' : 'testnet';
+  return network === 'xna' || network === 'xna-pq' || network === 'xna-legacy'
+    ? 'mainnet'
+    : 'testnet';
 }
 
 export function getBurnAddressForOperation(
@@ -85,7 +87,9 @@ export function getOwnerTokenName(assetName: string): string {
 }
 
 export function getParentAssetName(assetName: string): string | null {
-  const slashIndex = assetName.indexOf('/');
+  // The parent is the immediate one, not the root: "A/B/C" is owned by "A/B!"
+  // (node GetParentName resolves with find_last_of for SUB and DEPIN alike).
+  const slashIndex = assetName.lastIndexOf('/');
   if (slashIndex === -1) {
     return null;
   }
@@ -102,13 +106,39 @@ export function normalizeVerifierString(verifierString: string): string {
     .replace(/#/g, '');
 }
 
+// The node accepts DEPIN names up to 121 chars where DePIN is enabled, but a
+// 121-char base name yields a 122-char owner token ("&X!") that fails the
+// global name-length check, making the asset untransferable. Capped at 120
+// here so every name this library issues keeps a nameable owner token.
+export const DEPIN_MAX_NAME_LENGTH = 120;
+
 export function isDepinAssetName(assetName: string): boolean {
   const normalized = String(assetName || '').trim();
-  return /^&[A-Z0-9._]{3,}$/.test(normalized) || /^&[A-Z0-9._]+\/[A-Z0-9._/]+$/.test(normalized);
+  if (normalized.length > DEPIN_MAX_NAME_LENGTH) {
+    return false;
+  }
+  if (!normalized.includes('/')) {
+    return /^&[A-Z0-9._]{3,}$/.test(normalized);
+  }
+  if (!/^&[A-Z0-9._]+\/[A-Z0-9._/]+$/.test(normalized)) {
+    return false;
+  }
+  // The node parser lets the first part count its leading '&' toward the
+  // 3-char minimum ("&AB/CDE" parses), but such an asset can never be issued:
+  // its parent "&AB" is not a valid root, so the parent owner token "&AB!"
+  // required at issuance cannot exist. Require 3 real chars in every segment.
+  const [root, ...rest] = normalized.split('/');
+  return root.length >= 4 && rest.every((part) => part.length >= 3);
 }
 
 export function assertDepinAssetName(assetName: string): void {
   if (!isDepinAssetName(assetName)) {
     throw new Error(`Invalid DEPIN asset name: ${assetName}`);
+  }
+}
+
+export function assertDepinNetwork(network?: SupportedNetwork): void {
+  if (network !== undefined && resolveNetworkFamily(network) === 'mainnet') {
+    throw new Error(`DEPIN assets are only available on testnet/regtest networks: ${network}`);
   }
 }

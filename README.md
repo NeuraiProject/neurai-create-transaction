@@ -19,6 +19,7 @@ Current scope:
   - tag / untag
   - freeze / unfreeze address
   - freeze / unfreeze asset
+  - DePIN transfer (soulbound owner escort) and DePIN self-revocation
 
 This package is intentionally low-level. It does not select UTXOs, estimate fees
 or sign transactions.
@@ -63,7 +64,9 @@ hash pushes.
 | Standard asset transfer | `createStandardAssetTransferTransaction(...)` | Supports `transfer` and `transferwithmessage` |
 | Root asset issue | `createIssueAssetTransaction(...)` | Standard `issue` flow |
 | Sub-asset issue | `createIssueSubAssetTransaction(...)` | Returns parent owner token and issues child owner token |
-| DePIN issue | `createIssueDepinTransaction(...)` | Separate `ISSUE_DEPIN`, forces `&...` and `units=0` |
+| DePIN issue | `createIssueDepinTransaction(...)` | Separate `ISSUE_DEPIN`, forces `&...` and `units=0`; sub-DePIN (`&X/Y`) transfers the immediate parent's owner token |
+| DePIN transfer | `createDepinTransferTransaction(...)` | Adds the mandatory `&X!` owner escort output (soulbound rule) |
+| DePIN self-revoke | `createDepinSelfRevokeTransaction(...)` | Holder renounces the asset: self-transfer plus flag-1 null data, no owner token |
 | Unique / NFT issue | `createIssueUniqueAssetTransaction(...)` | Expands one output per unique tag |
 | Qualifier issue | `createIssueQualifierTransaction(...)` | Supports sub-qualifier root change |
 | Restricted issue | `createIssueRestrictedTransaction(...)` | Adds verifier output and owner return |
@@ -86,6 +89,8 @@ would normally derive internally from asset RPC JSON.
 | Root asset issue | `ISSUE_ROOT` | Yes | No |
 | Sub-asset issue | `ISSUE_SUB` | Yes | No |
 | DePIN issue | `ISSUE_DEPIN` | Yes | No |
+| DePIN transfer | None | Yes (owner escort) | No |
+| DePIN self-revoke | None | No (must not appear) | No |
 | Unique / NFT issue | `ISSUE_UNIQUE` | Yes | No |
 | Qualifier issue | `ISSUE_QUALIFIER` / `ISSUE_SUB_QUALIFIER` | Sub-qualifier only | No |
 | Restricted issue | `ISSUE_RESTRICTED` | Yes | Yes |
@@ -167,6 +172,72 @@ console.log(tag.rawTx);
 console.log(withCustomTail.rawTx);
 ```
 
+## DePIN assets (testnet/regtest only)
+
+DePIN assets (`&NAME`) are soulbound: consensus rejects any `&X` transfer that
+is not escorted by the owner token `&X!`, with self-revocation as the only
+exception. They do not exist on mainnet — pass the optional `network` parameter
+to the DePIN builders to fail fast if a mainnet network slips in (the chain is
+never inferred from addresses).
+
+```ts
+import {
+  createDepinSelfRevokeTransaction,
+  createDepinTransferTransaction,
+  createIssueDepinTransaction,
+  getBurnAddressForOperation,
+  getBurnAmountSats
+} from './dist/index.js';
+
+// Owner moves the asset: the builder appends the "&X!" escort output, but the
+// transaction must also SPEND an "&X!" UTXO — include it in `inputs` yourself.
+const transfer = createDepinTransferTransaction({
+  inputs: [
+    { txid: '...', vout: 0 }, // &DEVICE UTXO
+    { txid: '...', vout: 1 }, // &DEVICE! UTXO (mandatory)
+    { txid: '...', vout: 2 }  // XNA for fees
+  ],
+  transfers: [{ address: 'tnq1...', assetName: '&DEVICE', amountRaw: 100000000n }],
+  ownerChangeAddress: 'tnq1...',
+  network: 'xna-pq-test'
+});
+
+// Holder renounces the asset. Every spent "&DEVICE" UTXO must come from the
+// holder address (XNA fee inputs may come from anywhere), no input or output
+// may touch "&DEVICE!", and every "&DEVICE" output must pay the holder.
+const selfRevoke = createDepinSelfRevokeTransaction({
+  inputs: [
+    { txid: '...', vout: 0 }, // &DEVICE UTXO held by holderAddress
+    { txid: '...', vout: 1 }  // XNA for fees
+  ],
+  assetName: '&DEVICE',
+  holderAddress: 'tnq1...',
+  amountRaw: 100000000n
+});
+```
+
+DePIN rules enforced by the builders:
+
+- Names: `&` plus at least 3 chars (`A-Z 0-9 _ .`); hierarchical names
+  (`&X/Y/...`) need 3 real chars in every `/`-separated segment, including the
+  root. The node parser itself lets the root count its leading `&` (`&AB/CDE`
+  parses), but such an asset can never be issued — its parent `&AB` is not a
+  valid root, so the parent owner token required at issuance cannot exist —
+  and the library rejects it upfront.
+- Name length is capped at 120 chars (`DEPIN_MAX_NAME_LENGTH`). The node
+  accepts 121 where DePIN is enabled, but a 121-char asset yields a 122-char
+  owner token that fails the global name check, leaving the asset frozen in
+  place — a known upstream quirk this library sidesteps.
+- Sub-DePIN issuance follows the sub-asset flow: the issuing transaction
+  transfers the immediate parent's owner token (`&X/Y/Z` needs `&X/Y!`).
+- DePIN reissue accepts `units` 0 or -1 (keep) only, and the owner-token change
+  must return to the destination address.
+- `createFreezeAddressesTransaction(...)` works for DePIN owner freeze/unfreeze
+  (`operation: 'freeze' | 'unfreeze'`); the owner-change address cannot be one
+  of the frozen targets, and the spent `&X!` UTXO must not sit on a target
+  address either (the latter is on the caller — inputs carry no address). An
+  owner unfreeze cannot undo a holder's self-revocation.
+
 ## Bridging from upstream metadata
 
 When another package already resolved burn, change, owner return and operation
@@ -209,6 +280,24 @@ const built = createFromOperation({
 - The global bundle exposes `globalThis.NeuraiCreateTransaction`.
 - `createUnsignedTransaction(...)` still lets you build arbitrary transactions
   from pre-serialized outputs.
-- High-level builders now accept `extraOutputs` so callers can append custom
-  outputs without dropping to fully manual transaction assembly.
+- High-level builders accept `extraOutputs` so callers can add custom outputs
+  without dropping to fully manual transaction assembly. In issue and reissue
+  builders they are placed BEFORE the owner/issue/reissue outputs: consensus
+  reads the issue output at `vout[n-1]` (and the owner at `vout[n-2]`), so the
+  issuance tail must stay last. Transfer-style builders keep them last. If you
+  fund a built issuance externally (e.g. `fundrawtransaction`), pin
+  `changePosition` so the change output does not land after the issuance tail.
 - UTXO selection, fee estimation and signing remain outside this package.
+- `tests/node-regtest.test.ts` replays the whole DePIN cycle (issue, escorted
+  transfer, rejected unescorted transfer, freeze, self-revoke, sub-DePIN,
+  reissue with units -1) as live vectors: each cycle transaction is built by
+  this library, signed by the node wallet and validated with
+  `testmempoolaccept` against a throwaway regtest with `-assetindex
+  -addressindex`. One extra vector calls the node's `issue` RPC directly with
+  `&AB` to confirm the node rejects the name the library rejects. The suite
+  looks for the DePIN-branch node in the `neurai-wt2` Docker container
+  (override with `NEURAI_REGTEST_CONTAINER`) or local binaries via
+  `NEURAID_BIN` / `NEURAI_CLI_BIN`, and skips itself when neither is
+  available — so a release pipeline must provide one of the two (or run this
+  file as a mandatory separate job) for the live vectors to actually gate
+  publishing.

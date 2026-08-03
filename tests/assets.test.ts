@@ -31,10 +31,11 @@ const AUTHSCRIPT_COMMITMENT = '3c5c93248148e2b005ddb351bb506f0b830cec149a1b03791
 //     unitPriceSats: 100_000_000n,
 //   })
 //
-// Regenerate this fixture whenever `neurai-scripts` changes the covenant
-// layout (see §4.1 of plan-adaptacion-create-transaction-v2.md). These tests
-// verify wrapper shape only — they do NOT detect drift of the covenant
-// itself; that detection happens in consumers (neurai-private-dex on testnet).
+// Kept as a NEGATIVE fixture: appending the asset wrapper to a bare covenant
+// is consensus-invalid on every network (node OP_XNA_ASSET placement rules,
+// tmp/PLAN-ADAPTACION-NODO-2026-08.md §3). A real production covenant makes a
+// better rejection vector than a synthetic script; there is no need to
+// regenerate it when the covenant layout changes.
 const COVENANT_SPK_FIXTURE_HEX =
   '6376a914e295c733ad2c8e92954d547603f9f63d99eae6c488ac67760400e1f5059500cc7ca26900cd1976a914e295c733ad2c8e92954d547603f9f63d99eae6c488ac88765152ce885151ce034341548852cd53b6885251ce03434154885252ce780052cf7c9488755168';
 
@@ -106,7 +107,9 @@ describe('assets', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Transfer to raw scriptPubKey (covenants, P2SH, bare non-standard locks)
+  // Transfer to raw scriptPubKey — only P2PKH-shape (25B) and AuthScript-shape
+  // (34B) survive the node's OP_XNA_ASSET placement rules; anything else must
+  // be rejected locally instead of producing a consensus-invalid output.
   // ---------------------------------------------------------------------------
 
   it('encodeAssetTransferScriptToScript matches address-based variant when fed the same spk', () => {
@@ -138,29 +141,52 @@ describe('assets', () => {
     expect(bytesToHex(viaSpk)).toBe(bytesToHex(viaAddr));
   });
 
-  it('createAssetTransferToScriptOutput wraps a covenant scriptPubKey correctly', () => {
-    const out = createAssetTransferToScriptOutput({
-      scriptPubKeyHex: COVENANT_SPK_FIXTURE_HEX,
-      assetName: 'CAT',
-      amountRaw: 100n
-    });
+  it('encodeAssetTransferScriptToScript matches address-based variant for AuthScript spk', () => {
+    const spk = `5120${AUTHSCRIPT_COMMITMENT}`;
+    const viaAddr = encodeAssetTransferScript(AUTHSCRIPT_TEST, 'CAT', 100n);
+    const viaSpk = encodeAssetTransferScriptToScript(spk, 'CAT', 100n);
 
-    // 1) The resulting scriptPubKey starts with the covenant bytes verbatim.
-    expect(out.scriptPubKeyHex.startsWith(COVENANT_SPK_FIXTURE_HEX)).toBe(true);
+    expect(bytesToHex(viaSpk)).toBe(bytesToHex(viaAddr));
+  });
 
-    // 2) Immediately after the covenant comes OP_XNA_ASSET (0xc0).
-    const tailHex = out.scriptPubKeyHex.slice(COVENANT_SPK_FIXTURE_HEX.length);
-    expect(tailHex.slice(0, 2)).toBe('c0');
+  it('rejects a bare covenant scriptPubKey (consensus placement rules)', () => {
+    expect(() =>
+      createAssetTransferToScriptOutput({
+        scriptPubKeyHex: COVENANT_SPK_FIXTURE_HEX,
+        assetName: 'CAT',
+        amountRaw: 100n
+      })
+    ).toThrow(/OP_XNA_ASSET placement rules/);
+  });
 
-    // 3) Script ends with OP_DROP (0x75).
-    expect(tailHex.endsWith('75')).toBe(true);
+  it('rejects near-valid prefixes with the wrong shape', () => {
+    const p2pkh = bytesToHex(encodeP2PKHScript(LEGACY_TEST));
+    const nearValid = [
+      // P2PKH with a 0x13 hash push (24-byte script).
+      '76a913' + 'e2'.repeat(19) + '88ac',
+      // P2PKH with a 0x15 hash push (26-byte script).
+      '76a915' + 'e2'.repeat(21) + '88ac',
+      // Valid 25-byte P2PKH plus one trailing byte (c0 would land at 26).
+      p2pkh + '00',
+      // OP_1 with a 33-byte push (35-byte script).
+      '5121' + 'ab'.repeat(33),
+      // Valid 34-byte AuthScript plus one trailing byte (c0 would land at 35).
+      `5120${AUTHSCRIPT_COMMITMENT}00`,
+      // Empty script.
+      ''
+    ];
 
-    // 4) Asset-only output carries no XNA.
-    expect(out.valueSats).toBe(0n);
-
-    // 5) Transfer payload for "CAT" 100 (amountRaw=100 → 8-byte LE = 6400000000000000).
-    expect(out.scriptPubKeyHex).toContain('72766e7403434154');   // 'rvnt' + 0x03 + 'CAT'
-    expect(out.scriptPubKeyHex).toContain('6400000000000000');   // 100n little-endian
+    for (const scriptPubKeyHex of nearValid) {
+      expect(
+        () =>
+          createAssetTransferToScriptOutput({
+            scriptPubKeyHex,
+            assetName: 'CAT',
+            amountRaw: 1n
+          }),
+        `script ${scriptPubKeyHex || '(empty)'} should be rejected`
+      ).toThrow(/OP_XNA_ASSET placement rules/);
+    }
   });
 
   it('createAssetTransferToScriptOutput rejects malformed hex', () => {

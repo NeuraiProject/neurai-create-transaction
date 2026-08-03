@@ -1,15 +1,21 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { getNoAuthAddress } from '@neuraiproject/neurai-key';
 import {
   createDepinSelfRevokeTransaction,
   createDepinTransferTransaction,
   createFreezeAddressesTransaction,
+  createIssueAssetTransaction,
   createIssueDepinTransaction,
+  createPaymentTransaction,
   createReissueTransaction,
   createStandardAssetTransferTransaction,
+  encodeAssetTransferPayload,
+  REGTEST_GLOBAL_BURN_ADDRESS,
   xnaToSatoshis
 } from '../src/index.js';
+import { bytesToHex, hexToBytes, pushData } from '../src/bytes.js';
 
 // Live vectors against a throwaway neuraid regtest with -assetindex and
 // -addressindex. Every transaction is BUILT BY THIS LIBRARY, signed by the
@@ -47,7 +53,13 @@ const MODE: 'docker' | 'local' | 'skip' = dockerAvailable()
     : 'skip';
 
 // Regtest chainparams: single global burn address for every operation.
-const BURN_REGTEST = 'tBURNXXXXXXXXXXXXXXXXXXXXXXXVZLroy';
+const BURN_REGTEST = REGTEST_GLOBAL_BURN_ADDRESS;
+
+// Bare partial-fill covenant fixture (see tests/assets.test.ts). Used here to
+// pin the node-side OP_XNA_ASSET placement rejection the library's
+// transfersToScript validation mirrors.
+const COVENANT_SPK_FIXTURE_HEX =
+  '6376a914e295c733ad2c8e92954d547603f9f63d99eae6c488ac67760400e1f5059500cc7ca26900cd1976a914e295c733ad2c8e92954d547603f9f63d99eae6c488ac88765152ce885151ce034341548852cd53b6885251ce03434154885252ce780052cf7c9488755168';
 // Neurai's minimum relay fee is well above bitcoin's defaults; 0.01 XNA per
 // transaction clears it at every size used here.
 const FEE = xnaToSatoshis(0.01);
@@ -59,6 +71,7 @@ const DATADIR = `/tmp/neurai-regtest-${process.pid}`;
 let A = ''; // owner address
 let B = ''; // holder address (self-revokes)
 let C = ''; // freeze target address
+let D = ''; // normal-asset issuer (placement/AuthScript vectors)
 
 function sh(args: string[], allowFail = false): string {
   const [bin, ...rest] =
@@ -367,5 +380,78 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
 
   it('confirms the node rejects issuing "&AB" (library name rule matches consensus)', () => {
     expect(() => cli('issue', '&AB', 1, A, A, 0, 'true')).toThrow();
+  }, 60_000);
+
+  it('node rejects an asset wrapper appended to a bare covenant (OP_XNA_ASSET placement)', () => {
+    const fees = xnaUtxo(A, 5);
+    // The library refuses to build this shape since 0.5.0, so wrap the
+    // covenant by hand to pin the node-side rule that refusal mirrors.
+    const wrapped =
+      COVENANT_SPK_FIXTURE_HEX +
+      'c0' +
+      bytesToHex(pushData(encodeAssetTransferPayload('CARGO', xnaToSatoshis(1)))) +
+      '75';
+    const built = createPaymentTransaction({
+      inputs: [{ txid: fees.txid, vout: fees.vout }],
+      payments: [{ address: A, valueSats: xnaToSatoshis(fees.amount) - FEE }],
+      extraOutputs: [{ valueSats: 0n, scriptPubKeyHex: wrapped }]
+    });
+
+    const result = signAndTest(built.rawTx);
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('op-xna-asset-not-in-right-script-location');
+  }, 60_000);
+
+  it('accepts an asset deposit into a NoAuth AuthScript commitment via plain transfers', () => {
+    // Top up coinbase maturity so the wallet can fund the 1000 XNA root burn.
+    cli('generate', 40);
+    D = cli('getnewaddress');
+    cli('sendtoaddress', D, 1020);
+    cli('generate', 1);
+
+    const utxo = xnaUtxo(D, 1015);
+    const issue = createIssueAssetTransaction({
+      inputs: [{ txid: utxo.txid, vout: utxo.vout }],
+      burnAddress: BURN_REGTEST,
+      burnAmountSats: xnaToSatoshis(1000),
+      xnaChangeAddress: D,
+      xnaChangeSats: xnaToSatoshis(utxo.amount - 1000) - FEE,
+      toAddress: D,
+      assetName: 'CARGO',
+      quantityRaw: xnaToSatoshis(100)
+    });
+    const issued = signAndTest(issue.rawTx);
+    expect(issued.allowed, `reject: ${issued.reason}`).toBe(true);
+    sendAndMine(issued.hex);
+
+    // Deposit 5 CARGO into the covenant commitment derived with neurai-key's
+    // public API. This is the asset-compatible covenant deployment: a plain
+    // `transfers` leg to the NoAuth address — transfersToScript not involved.
+    const noauth = getNoAuthAddress('xna-pq-test', {
+      witnessScript: hexToBytes(COVENANT_SPK_FIXTURE_HEX)
+    });
+    const asset = assetUtxo(D, 'CARGO');
+    const fees = xnaUtxo(D, 5);
+    const built = createStandardAssetTransferTransaction({
+      inputs: [
+        { txid: asset.txid, vout: asset.outputIndex },
+        { txid: fees.txid, vout: fees.vout }
+      ],
+      transfers: [
+        { address: noauth.address, assetName: 'CARGO', amountRaw: xnaToSatoshis(5) },
+        { address: D, assetName: 'CARGO', amountRaw: xnaToSatoshis(95) }
+      ],
+      payments: [{ address: D, valueSats: xnaToSatoshis(fees.amount) - FEE }]
+    });
+
+    const result = signAndTest(built.rawTx);
+    expect(result.allowed, `reject: ${result.reason}`).toBe(true);
+    sendAndMine(result.hex);
+
+    const decoded = cliJson('decoderawtransaction', result.hex);
+    const deposit = decoded.vout.find((v: any) =>
+      String(v.scriptPubKey.hex).startsWith(`5120${noauth.commitment}c0`)
+    );
+    expect(deposit, 'asset output committed to the covenant AuthScript').toBeTruthy();
   }, 60_000);
 });

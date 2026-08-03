@@ -131,15 +131,20 @@ export interface TransferWithMessageOutputParams extends TransferOutputParams {
 }
 
 /**
- * Parameters for an asset-transfer output that locks under an arbitrary
- * `scriptPubKey` instead of an address. Used to fund covenants, P2SH or any
- * bare non-standard lock for which the caller already has the scriptPubKey
- * bytes. Produces the same `OP_XNA_ASSET + pushdata(payload) + OP_DROP`
- * wrapper as `TransferOutputParams`, but with the recipient scriptPubKey
- * provided verbatim.
+ * Parameters for an asset-transfer output that locks under a raw
+ * `scriptPubKey` the caller already holds instead of an address. The script
+ * MUST be exactly P2PKH (25 bytes) or AuthScript `OP_1 <32B>` (34 bytes):
+ * consensus only accepts the `OP_XNA_ASSET + pushdata(payload) + OP_DROP`
+ * wrapper right after one of those two prefixes, so any other script (a bare
+ * covenant, P2SH, …) is rejected by the builder. To fund a covenant, commit
+ * it into an AuthScript destination (neurai-key `getNoAuthAddress`) and use
+ * the address-based `TransferOutputParams` instead.
  */
 export interface TransferToScriptOutputParams {
-  /** Raw scriptPubKey bytes (hex) that will prefix the asset-transfer wrapper. */
+  /**
+   * Raw scriptPubKey bytes (hex) that will prefix the asset-transfer
+   * wrapper. Must be P2PKH-shaped (25 bytes) or AuthScript-shaped (34 bytes).
+   */
   scriptPubKeyHex: string;
   assetName: string;
   amountRaw: bigint | number;

@@ -238,6 +238,49 @@ DePIN rules enforced by the builders:
   address either (the latter is on the caller — inputs carry no address). An
   owner unfreeze cannot undo a holder's self-revocation.
 
+## Transfers to raw scripts and covenants (AuthScript)
+
+`transfersToScript` / `createAssetTransferToScriptOutput` append the asset
+wrapper (`OP_XNA_ASSET <payload> OP_DROP`) to a scriptPubKey the caller
+already holds. Since 0.5.0 the recipient script must be **exactly** P2PKH
+(25 bytes) or AuthScript `OP_1 <32B>` (34 bytes); anything else throws.
+This mirrors consensus: the node only accepts `OP_XNA_ASSET` at byte 25
+(after a P2PKH prefix), at byte 34 (after an AuthScript prefix) or at
+position 0 (null-asset metadata) — appending the wrapper to a bare covenant,
+P2SH or any other script produces an output every network rejects with
+`bad-txns-op-xna-asset-not-in-right-script-location`.
+
+To pay assets into an arbitrary script (a covenant), commit the script into
+an AuthScript destination and use the regular address-based `transfers` leg:
+
+```ts
+import { getNoAuthAddress } from '@neuraiproject/neurai-key';
+
+// auth_type 0x00 (NoAuth): the covenant script alone gates the spend.
+const noauth = getNoAuthAddress('xna-pq-test', { witnessScript: covenantBytes });
+// noauth.address is a tnq1... destination usable in `transfers`.
+```
+
+Do NOT hash the covenant yourself: the commitment is
+`TaggedHash("NeuraiAuthScript", 0x01 || authDescriptor || SHA256(witnessScript))`,
+not a plain `SHA256(script)` — a mis-derived commitment yields deposits the
+chain accepts but that can never be spent (`WITNESS_PROGRAM_MISMATCH`).
+Always derive it through neurai-key's public API.
+
+Spending such an output takes a witness stack
+(`[0x00, ...args, witnessScript]`) instead of a scriptSig. This package does
+not serialize witness transactions; assemble the unlock stack with the
+witness-stack builders in `@neuraiproject/neurai-scripts`
+(`buildFillWitnessStack`, `buildCancelWitnessStack`,
+`buildAuthScriptWitnessNoAuth`) and serialize the spend elsewhere.
+
+> **Status**: deposit + witness spend of a NoAuth commitment is proven
+> end-to-end in regtest (see the live vectors below). The full partial-fill
+> covenant under AuthScript (introspection opcodes and the cancel-branch
+> sighash under `SIGVERSION_AUTHSCRIPT`) is **not yet validated end-to-end**;
+> until that vector exists, treat the complete DEX covenant flow as
+> experimental.
+
 ## Bridging from upstream metadata
 
 When another package already resolved burn, change, owner return and operation
@@ -288,12 +331,27 @@ const built = createFromOperation({
   fund a built issuance externally (e.g. `fundrawtransaction`), pin
   `changePosition` so the change output does not land after the issuance tail.
 - UTXO selection, fee estimation and signing remain outside this package.
+- Regtest uses ONE global burn address for every operation
+  (`REGTEST_GLOBAL_BURN_ADDRESS`, exported); `getBurnAddressForOperation`
+  models mainnet/testnet only, so pass the constant through the
+  `burnAddress`/`burnAmountSats` overrides when targeting regtest. Note
+  regtest shares the `tnq` HRP and base58 prefixes with testnet — networks
+  are indistinguishable by address.
+- Nodes serving DePIN messaging additionally need `-pubkeyindex=1` (the
+  index, like `-assetindex`, does not change transaction validity).
+- The relay limit for null-asset data scripts is 512 bytes on testnet AND
+  regtest (mainnet keeps 83); a policy limit, not consensus.
 - `tests/node-regtest.test.ts` replays the whole DePIN cycle (issue, escorted
   transfer, rejected unescorted transfer, freeze, self-revoke, sub-DePIN,
   reissue with units -1) as live vectors: each cycle transaction is built by
   this library, signed by the node wallet and validated with
   `testmempoolaccept` against a throwaway regtest with `-assetindex
-  -addressindex`. One extra vector calls the node's `issue` RPC directly with
+  -addressindex`. Two placement vectors pin the OP_XNA_ASSET rules: a bare
+  covenant with the wrapper appended is rejected with the literal
+  `op-xna-asset-not-in-right-script-location` reason, and an asset deposit
+  into a neurai-key NoAuth commitment is accepted (the witness SPEND of that
+  commitment is proven in `neurai-scripts`' `node-regtest-authscript`
+  suite). One extra vector calls the node's `issue` RPC directly with
   `&AB` to confirm the node rejects the name the library rejects. The suite
   looks for the DePIN-branch node in the `neurai-wt2` Docker container
   (override with `NEURAI_REGTEST_CONTAINER`) or local binaries via

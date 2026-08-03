@@ -51,6 +51,12 @@ const BURN_COSTS_XNA: Record<BurnOperationType, number> = {
   UNTAG_ADDRESS: 0.2
 };
 
+// Regtest chainparams use one global burn address for every operation
+// (node chainparams.cpp strGlobalBurnAddress). Pass it as the
+// `burnAddress` override of the issuance/reissue builders when targeting
+// regtest; `getBurnAddressForOperation` only models mainnet/testnet.
+export const REGTEST_GLOBAL_BURN_ADDRESS = 'tBURNXXXXXXXXXXXXXXXXXXXXXXXVZLroy';
+
 function resolveNetworkFamily(network: SupportedNetwork): 'mainnet' | 'testnet' {
   return network === 'xna' || network === 'xna-pq' || network === 'xna-legacy'
     ? 'mainnet'

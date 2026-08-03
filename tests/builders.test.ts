@@ -543,9 +543,10 @@ describe('builders', () => {
   });
 
   it('preserves output order with transfersToScript: payments, transfers, transferMessages, transfersToScript, extraOutputs', () => {
-    // Covenant scriptPubKey fixture — see tests/assets.test.ts for provenance.
-    const COVENANT_SPK_FIXTURE_HEX =
-      '6376a914e295c733ad2c8e92954d547603f9f63d99eae6c488ac67760400e1f5059500cc7ca26900cd1976a914e295c733ad2c8e92954d547603f9f63d99eae6c488ac88765152ce885151ce034341548852cd53b6885251ce03434154885252ce780052cf7c9488755168';
+    // Only P2PKH/AuthScript-shape scripts survive the node's OP_XNA_ASSET
+    // placement rules, so the raw-script leg uses an AuthScript spk (e.g. a
+    // covenant committed via neurai-key's getNoAuthAddress).
+    const AUTHSCRIPT_SPK_HEX = '5120' + 'ab'.repeat(32);
 
     const built = createStandardAssetTransferTransaction({
       inputs: [{ txid: '11'.repeat(32), vout: 0 }],
@@ -559,7 +560,7 @@ describe('builders', () => {
         expireTime: 123n
       }],
       transfersToScript: [
-        { scriptPubKeyHex: COVENANT_SPK_FIXTURE_HEX, assetName: 'CAT', amountRaw: 100n }
+        { scriptPubKeyHex: AUTHSCRIPT_SPK_HEX, assetName: 'CAT', amountRaw: 100n }
       ],
       extraOutputs: [{ valueSats: 0n, scriptPubKeyHex: '6a0474657374' }] // OP_RETURN "test"
     });
@@ -577,12 +578,24 @@ describe('builders', () => {
       '54209c2c8e121a0139ba39bffd3ca97267bca9d4c0c1e84ac0c34a883c28e7a912ca'
     );
 
-    // [3] transferToScript (NEW): starts with the covenant spk verbatim
-    expect(built.outputs[3].scriptPubKeyHex.startsWith(COVENANT_SPK_FIXTURE_HEX)).toBe(true);
+    // [3] transferToScript: starts with the AuthScript spk verbatim
+    expect(built.outputs[3].scriptPubKeyHex.startsWith(AUTHSCRIPT_SPK_HEX)).toBe(true);
     expect(built.outputs[3].valueSats).toBe(0n);
 
     // [4] extraOutputs (preserves last position)
     expect(built.outputs[4].scriptPubKeyHex).toBe('6a0474657374');
+  });
+
+  it('rejects transfersToScript legs whose script is not P2PKH/AuthScript-shaped', () => {
+    expect(() =>
+      createStandardAssetTransferTransaction({
+        inputs: [{ txid: '11'.repeat(32), vout: 0 }],
+        transfersToScript: [
+          // Bare covenant-like script: consensus-invalid placement.
+          { scriptPubKeyHex: '6376a914' + 'e2'.repeat(20) + '88ac68', assetName: 'CAT', amountRaw: 1n }
+        ]
+      })
+    ).toThrow(/OP_XNA_ASSET placement rules/);
   });
 
   it('backwards-compat: omitting transfersToScript leaves existing 3-output order intact', () => {

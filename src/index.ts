@@ -101,6 +101,22 @@ export {
   serializeOutput
 } from './tx.js';
 
+export type {
+  DecodedTransaction,
+  DecodedTxInput,
+  RefInput,
+  SerializeTransactionOptions,
+  TransactionSizes
+} from './tx-codec.js';
+
+export {
+  computeTxid,
+  computeWtxid,
+  estimateTransactionSize,
+  parseTransaction,
+  serializeTransaction
+} from './tx-codec.js';
+
 export {
   decodeAddress,
   encodeAuthScriptDestinationScript,

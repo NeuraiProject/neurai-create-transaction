@@ -281,6 +281,37 @@ witness-stack builders in `@neuraiproject/neurai-scripts`
 > until that vector exists, treat the complete DEX covenant flow as
 > experimental.
 
+## Transaction codec (v1/v2/v3, witness, vrefin)
+
+Since 0.5.1 the package ships a full transaction codec alongside the legacy
+`createUnsignedTransaction(...)` helper (which is unchanged and still emits
+the pre-witness form the builders use):
+
+- `parseTransaction(hex)` — decodes v1/v2/v3 transactions, with or without
+  the extended witness format (dummy-vin marker + flags), including the
+  NIP-014 `vrefin` vector that v3 serializes between `vout` and the witness.
+  The parser mirrors the node's strictness: canonical CompactSize only,
+  `MAX_SIZE` (32 MiB) bound, declared lengths validated against the remaining
+  bytes before any allocation, unknown flags and trailing bytes rejected,
+  `version` read as signed int32.
+- `serializeTransaction(tx, { includeWitness? })` — node parity: the
+  marker/flags form is only emitted when at least one input carries a
+  non-empty witness stack; `includeWitness: false` forces the stripped form
+  that feeds the txid. In v3 the `vrefin` vector is always serialized (even
+  empty); a non-empty `vrefin` outside v3 throws.
+- `computeTxid(...)` / `computeWtxid(...)` — double-SHA256 of the stripped /
+  full serialization (both include `vrefin` on v3), reversed hex as RPC
+  displays it.
+- `estimateTransactionSize(...)` — `{ size, strippedSize, weight, vsize }`
+  with the node's formula: `weight = strippedSize * 3 + size`,
+  `vsize = ceil(weight / 4)`; `vrefin` counts in both serializations.
+
+Fixtures in `tests/fixtures/tx-codec.ts` carry hex/txid/wtxid values produced
+by the regtest node itself, and `tests/node-regtest-codec.test.ts` replays the
+checks live (txid/wtxid parity, v3 + `vrefin` decode, and a signed v3
+transaction accepted by `testmempoolaccept`) against the same Docker/binary
+setup as the DePIN vectors.
+
 ## Bridging from upstream metadata
 
 When another package already resolved burn, change, owner return and operation

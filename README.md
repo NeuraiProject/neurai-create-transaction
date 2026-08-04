@@ -268,11 +268,13 @@ chain accepts but that can never be spent (`WITNESS_PROGRAM_MISMATCH`).
 Always derive it through neurai-key's public API.
 
 Spending such an output takes a witness stack
-(`[0x00, ...args, witnessScript]`) instead of a scriptSig. This package does
-not serialize witness transactions; assemble the unlock stack with the
-witness-stack builders in `@neuraiproject/neurai-scripts`
-(`buildFillWitnessStack`, `buildCancelWitnessStack`,
-`buildAuthScriptWitnessNoAuth`) and serialize the spend elsewhere.
+(`[0x00, ...args, witnessScript]`) instead of a scriptSig. Assemble the
+unlock stack with the witness-stack builders in
+`@neuraiproject/neurai-scripts` (`buildFillWitnessStack`,
+`buildCancelWitnessStack`, `buildAuthScriptWitnessNoAuth`) and serialize the
+spend with `serializeTransaction` from this package's transaction codec
+(0.5.1+) — witness elements go in as hex strings, one per stack slot
+(`witness.map(bytesToHex)`); `computeTxid`/`computeWtxid` cover the ids.
 
 > **Status**: deposit + witness spend of a NoAuth commitment is proven
 > end-to-end in regtest (see the live vectors below). The full partial-fill

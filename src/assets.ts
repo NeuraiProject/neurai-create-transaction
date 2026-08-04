@@ -123,9 +123,10 @@ export function isAuthScriptScript(script: Uint8Array): boolean {
  * The asset-transfer wrapper is appended exactly as in the address-based
  * variant: `<recipientScriptPubKey> OP_XNA_ASSET <pushdata(payload)> OP_DROP`.
  *
- * Note: this helper only builds the output. Spending inputs whose scriptPubKey
- * requires witness data (e.g. AuthScript) is not supported by this package —
- * see `createUnsignedTransaction`, which serializes legacy pre-segwit format only.
+ * Note: this helper only builds the output. Spending an AuthScript output
+ * takes a witness stack; `createUnsignedTransaction` serializes the legacy
+ * pre-segwit format only, so serialize such spends with the transaction
+ * codec's `serializeTransaction` (tx-codec.ts, 0.5.1+) instead.
  */
 export function encodeAssetTransferScriptToScript(
   recipientScriptPubKey: Uint8Array | string,

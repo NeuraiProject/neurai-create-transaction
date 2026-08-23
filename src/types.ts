@@ -10,6 +10,20 @@ import type {
 export type SupportedNetwork = LegacyNetwork | PQNetwork;
 
 export type DestinationType = 'p2pkh' | 'authscript';
+
+/**
+ * NIP-040 asset payload marker: `'rvn'` (legacy, Ravencoin-inherited) or
+ * `'xna'`. Consensus per network and height; take it from the node
+ * (`getblockchaininfo.asset_marker`, the marker required for the next block)
+ * or pass the one you know to be right when building offline. Defaults to
+ * `'rvn'` everywhere — this library never infers chain state.
+ */
+export type AssetMarker = 'rvn' | 'xna';
+export type AssetPayloadType = 'transfer' | 'new' | 'owner' | 'reissue';
+
+export interface AssetMarkerOptions {
+  assetMarker?: AssetMarker;
+}
 export type TagOperation = 'tag' | 'untag';
 export type FreezeOperation = 'freeze' | 'unfreeze';
 export type NullAssetDestinationMode = 'strict' | 'hash20';
@@ -112,7 +126,18 @@ export interface BaseTransactionParams {
   version?: number;
   locktime?: number;
   inputs: TxInput[];
+  /**
+   * Pre-serialized outputs appended verbatim. Opaque to the builders: if one
+   * of them is an asset output, the caller must have built it with the right
+   * `assetMarker` (e.g. `createAssetTransferOutput(..., { assetMarker })`).
+   */
   extraOutputs?: SerializedTxOutput[];
+  /**
+   * NIP-040 marker for every asset output this builder creates
+   * (`getblockchaininfo.asset_marker`). An output-level `assetMarker` takes
+   * precedence. Default `'rvn'`.
+   */
+  assetMarker?: AssetMarker;
 }
 
 export interface PaymentTransactionParams extends BaseTransactionParams {
@@ -123,6 +148,8 @@ export interface TransferOutputParams {
   address: AddressLike;
   assetName: string;
   amountRaw: bigint | number;
+  /** NIP-040 marker for this output; overrides the transaction-level value. */
+  assetMarker?: AssetMarker;
 }
 
 export interface TransferWithMessageOutputParams extends TransferOutputParams {
@@ -150,6 +177,8 @@ export interface TransferToScriptOutputParams {
   amountRaw: bigint | number;
   message?: string;
   expireTime?: bigint | number;
+  /** NIP-040 marker for this output; overrides the transaction-level value. */
+  assetMarker?: AssetMarker;
 }
 
 export interface AssetIssueOutputParams {
@@ -159,6 +188,8 @@ export interface AssetIssueOutputParams {
   units?: number;
   reissuable?: boolean;
   ipfsHash?: string;
+  /** NIP-040 marker for this output; overrides the transaction-level value. */
+  assetMarker?: AssetMarker;
 }
 
 export interface AssetReissueOutputParams {
@@ -168,6 +199,8 @@ export interface AssetReissueOutputParams {
   units?: number;
   reissuable?: boolean;
   ipfsHash?: string;
+  /** NIP-040 marker for this output; overrides the transaction-level value. */
+  assetMarker?: AssetMarker;
 }
 
 export interface XnaEnvelope {

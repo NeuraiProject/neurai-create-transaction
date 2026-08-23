@@ -15,6 +15,7 @@ import {
   REGTEST_GLOBAL_BURN_ADDRESS,
   xnaToSatoshis
 } from '../src/index.js';
+import type { AssetMarker } from '../src/index.js';
 import { bytesToHex, hexToBytes, pushData } from '../src/bytes.js';
 
 // Live vectors against a throwaway neuraid regtest with -assetindex and
@@ -68,6 +69,11 @@ const RPC_PORT = 20000 + (process.pid % 10000);
 const P2P_PORT = RPC_PORT + 1;
 const DATADIR = `/tmp/neurai-regtest-${process.pid}`;
 
+// NIP-040: the node reports the marker required for the next block
+// (getblockchaininfo.asset_marker, commit 347362b). The suite passes it to
+// every builder exactly as an application would; a node without the field is
+// a node too old for this suite.
+let ASSET_MARKER: AssetMarker = 'rvn';
 let A = ''; // owner address
 let B = ''; // holder address (self-revokes)
 let C = ''; // freeze target address
@@ -164,6 +170,14 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
     // past coinbase maturity (100) to have spendable XNA.
     cli('generate', 110);
 
+    const info = cliJson('getblockchaininfo');
+    if (info.asset_marker !== 'rvn' && info.asset_marker !== 'xna') {
+      throw new Error('getblockchaininfo.asset_marker missing: this suite needs a node with NIP-040 reporting (commit 347362b)');
+    }
+    ASSET_MARKER = info.asset_marker;
+    // Regtest activates NIP-040 at height 1, so past block 110 it must be xna.
+    expect(ASSET_MARKER).toBe('xna');
+
     A = cli('getnewaddress');
     B = cli('getnewaddress');
     C = cli('getnewaddress');
@@ -186,6 +200,7 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
   it('accepts a library-built DEPIN issuance', () => {
     const utxo = xnaUtxo(A, 30);
     const built = createIssueDepinTransaction({
+      assetMarker: ASSET_MARKER,
       inputs: [{ txid: utxo.txid, vout: utxo.vout }],
       burnAddress: BURN_REGTEST,
       burnAmountSats: xnaToSatoshis(10),
@@ -212,6 +227,7 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
     const asset = assetUtxo(A, '&DEVICE');
     const fees = xnaUtxo(A, 15);
     const built = createStandardAssetTransferTransaction({
+      assetMarker: ASSET_MARKER,
       inputs: [
         { txid: asset.txid, vout: asset.outputIndex },
         { txid: fees.txid, vout: fees.vout }
@@ -233,6 +249,7 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
     const owner = assetUtxo(A, '&DEVICE!');
     const fees = xnaUtxo(A, 15);
     const built = createDepinTransferTransaction({
+      assetMarker: ASSET_MARKER,
       inputs: [
         { txid: asset.txid, vout: asset.outputIndex },
         { txid: owner.txid, vout: owner.outputIndex },
@@ -261,6 +278,7 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
       const owner = assetUtxo(A, '&DEVICE!');
       const fees = xnaUtxo(A, 15);
       const seed = createDepinTransferTransaction({
+        assetMarker: ASSET_MARKER,
         inputs: [
           { txid: asset.txid, vout: asset.outputIndex },
           { txid: owner.txid, vout: owner.outputIndex },
@@ -282,6 +300,7 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
     const owner = assetUtxo(A, '&DEVICE!');
     const fees = xnaUtxo(A, 15);
     const built = createFreezeAddressesTransaction({
+      assetMarker: ASSET_MARKER,
       inputs: [
         { txid: owner.txid, vout: owner.outputIndex },
         { txid: fees.txid, vout: fees.vout }
@@ -308,6 +327,7 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
     const asset = assetUtxo(B, '&DEVICE');
     const fees = xnaUtxo(A, 15); // XNA fee input from another address is allowed
     const built = createDepinSelfRevokeTransaction({
+      assetMarker: ASSET_MARKER,
       inputs: [
         { txid: asset.txid, vout: asset.outputIndex },
         { txid: fees.txid, vout: fees.vout }
@@ -332,6 +352,7 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
     const owner = assetUtxo(A, '&DEVICE!');
     const fees = xnaUtxo(A, 15);
     const built = createIssueDepinTransaction({
+      assetMarker: ASSET_MARKER,
       inputs: [
         { txid: owner.txid, vout: owner.outputIndex },
         { txid: fees.txid, vout: fees.vout }
@@ -356,6 +377,7 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
     const owner = assetUtxo(A, '&DEVICE!');
     const fees = xnaUtxo(A, 210);
     const built = createReissueTransaction({
+      assetMarker: ASSET_MARKER,
       inputs: [
         { txid: owner.txid, vout: owner.outputIndex },
         { txid: fees.txid, vout: fees.vout }
@@ -378,6 +400,26 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
     expect(cliJson('listmyassets', '&DEVICE')['&DEVICE']).toBe(8);
   }, 60_000);
 
+  it('rejects a library-built issuance that forces the legacy rvn marker after NIP-040', () => {
+    const utxo = xnaUtxo(A, 15);
+    // Same shape as the accepted DEPIN issuance above (10 XNA burn), so the
+    // only thing the node can object to is the marker.
+    const built = createIssueDepinTransaction({
+      assetMarker: 'rvn',
+      inputs: [{ txid: utxo.txid, vout: utxo.vout }],
+      burnAddress: BURN_REGTEST,
+      burnAmountSats: xnaToSatoshis(10),
+      xnaChangeAddress: A,
+      xnaChangeSats: xnaToSatoshis(utxo.amount - 10) - FEE,
+      toAddress: A,
+      assetName: '&LEGACYMARK',
+      quantityRaw: xnaToSatoshis(1)
+    });
+    const result = signAndTest(built.rawTx);
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('bad-txns-legacy-asset-marker-after-nip040');
+  }, 60_000);
+
   it('confirms the node rejects issuing "&AB" (library name rule matches consensus)', () => {
     expect(() => cli('issue', '&AB', 1, A, A, 0, 'true')).toThrow();
   }, 60_000);
@@ -392,6 +434,7 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
       bytesToHex(pushData(encodeAssetTransferPayload('CARGO', xnaToSatoshis(1)))) +
       '75';
     const built = createPaymentTransaction({
+      assetMarker: ASSET_MARKER,
       inputs: [{ txid: fees.txid, vout: fees.vout }],
       payments: [{ address: A, valueSats: xnaToSatoshis(fees.amount) - FEE }],
       extraOutputs: [{ valueSats: 0n, scriptPubKeyHex: wrapped }]
@@ -411,6 +454,7 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
 
     const utxo = xnaUtxo(D, 1015);
     const issue = createIssueAssetTransaction({
+      assetMarker: ASSET_MARKER,
       inputs: [{ txid: utxo.txid, vout: utxo.vout }],
       burnAddress: BURN_REGTEST,
       burnAmountSats: xnaToSatoshis(1000),
@@ -433,6 +477,7 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
     const asset = assetUtxo(D, 'CARGO');
     const fees = xnaUtxo(D, 5);
     const built = createStandardAssetTransferTransaction({
+      assetMarker: ASSET_MARKER,
       inputs: [
         { txid: asset.txid, vout: asset.outputIndex },
         { txid: fees.txid, vout: fees.vout }

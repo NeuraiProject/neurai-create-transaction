@@ -31,6 +31,8 @@ import { bytesToHex } from './bytes.js';
 import { createUnsignedTransaction } from './tx.js';
 import type {
   AddressLike,
+  AssetMarker,
+  AssetMarkerOptions,
   BuiltTransaction,
   CreateTransactionFromOperationParams,
   DepinSelfRevokeTransactionParams,
@@ -94,6 +96,21 @@ function freezeFlagFromOperation(operation: FreezeOperation): number {
   return operation === 'freeze' ? 1 : 0;
 }
 
+// NIP-040: the transaction-level marker reaches every asset output a builder
+// creates; an output-level marker wins. `extraOutputs` are never touched.
+function marker(params: { assetMarker?: AssetMarker }): AssetMarkerOptions {
+  return { assetMarker: params.assetMarker };
+}
+
+function withMarker<T extends { assetMarker?: AssetMarker }>(
+  output: T,
+  params: { assetMarker?: AssetMarker }
+): T {
+  return output.assetMarker === undefined && params.assetMarker !== undefined
+    ? { ...output, assetMarker: params.assetMarker }
+    : output;
+}
+
 // Compare by decoded destination script, not by address text: two encodings of
 // the same destination (e.g. different Bech32 case) must count as equal.
 function sameDestination(a: AddressLike, b: AddressLike): boolean {
@@ -120,13 +137,13 @@ export function createStandardAssetTransferTransaction(
     outputs.push(createXnaOutput(payment.address, payment.valueSats));
   }
   for (const transfer of params.transfers ?? []) {
-    outputs.push(createTransferOutput(transfer));
+    outputs.push(createTransferOutput(withMarker(transfer, params)));
   }
   for (const transfer of params.transferMessages ?? []) {
-    outputs.push(createTransferWithMessageOutput(transfer));
+    outputs.push(createTransferWithMessageOutput(withMarker(transfer, params)));
   }
   for (const transfer of params.transfersToScript ?? []) {
-    outputs.push(createAssetTransferToScriptOutput(transfer));
+    outputs.push(createAssetTransferToScriptOutput(withMarker(transfer, params)));
   }
   appendExtraOutputs(outputs, params.extraOutputs);
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
@@ -143,7 +160,8 @@ export function createIssueAssetTransaction(params: IssueAssetTransactionParams)
     outputs.push(
       createOwnerAssetIssueOutput(
         params.ownerTokenAddress ?? params.toAddress,
-        params.ownerTokenName ?? getOwnerTokenName(params.assetName)
+        params.ownerTokenName ?? getOwnerTokenName(params.assetName),
+        marker(params)
       )
     );
   }
@@ -155,7 +173,8 @@ export function createIssueAssetTransaction(params: IssueAssetTransactionParams)
       quantityRaw: params.quantityRaw,
       units: params.units ?? 0,
       reissuable: params.reissuable ?? true,
-      ipfsHash: params.ipfsHash
+      ipfsHash: params.ipfsHash,
+      assetMarker: params.assetMarker
     })
   );
 
@@ -176,13 +195,15 @@ export function createIssueSubAssetTransaction(
   outputs.push(
     createOwnerAssetTransferOutput(
       params.parentOwnerAddress ?? params.xnaChangeAddress ?? params.toAddress,
-      getOwnerTokenName(parentAssetName)
+      getOwnerTokenName(parentAssetName),
+      marker(params)
     )
   );
   outputs.push(
     createOwnerAssetIssueOutput(
       params.ownerTokenAddress ?? params.toAddress,
-      getOwnerTokenName(params.assetName)
+      getOwnerTokenName(params.assetName),
+      marker(params)
     )
   );
   outputs.push(
@@ -192,7 +213,8 @@ export function createIssueSubAssetTransaction(
       quantityRaw: params.quantityRaw,
       units: params.units ?? 0,
       reissuable: params.reissuable ?? true,
-      ipfsHash: params.ipfsHash
+      ipfsHash: params.ipfsHash,
+      assetMarker: params.assetMarker
     })
   );
 
@@ -251,12 +273,12 @@ export function createDepinTransferTransaction(params: DepinTransferTransactionP
 
   const outputs: SerializedTxOutput[] = [];
   for (const transfer of params.transfers) {
-    outputs.push(createTransferOutput(transfer));
+    outputs.push(createTransferOutput(withMarker(transfer, params)));
   }
   // Soulbound escort: consensus also requires SPENDING an "&X!" UTXO, which
   // must be present in params.inputs (this package does not select UTXOs).
   outputs.push(
-    createOwnerAssetTransferOutput(params.ownerChangeAddress, getOwnerTokenName(assetName))
+    createOwnerAssetTransferOutput(params.ownerChangeAddress, getOwnerTokenName(assetName), marker(params))
   );
   appendXnaEnvelope(outputs, undefined, undefined, params.xnaChangeAddress, params.xnaChangeSats);
   appendExtraOutputs(outputs, params.extraOutputs);
@@ -277,7 +299,7 @@ export function createDepinSelfRevokeTransaction(
   // No owner token, no burn. The input-side rules live on the caller — see
   // DepinSelfRevokeTransactionParams.
   const outputs: SerializedTxOutput[] = [
-    createAssetTransferOutput(params.holderAddress, params.assetName, params.amountRaw),
+    createAssetTransferOutput(params.holderAddress, params.assetName, params.amountRaw, marker(params)),
     createNullAssetRestrictionOutput(
       params.holderAddress,
       params.assetName,
@@ -299,7 +321,8 @@ export function createIssueUniqueAssetTransaction(
   outputs.push(
     createOwnerAssetTransferOutput(
       params.ownerTokenAddress ?? params.toAddress,
-      getOwnerTokenName(params.rootName)
+      getOwnerTokenName(params.rootName),
+      marker(params)
     )
   );
 
@@ -311,7 +334,8 @@ export function createIssueUniqueAssetTransaction(
         quantityRaw: UNIQUE_ASSET_AMOUNT,
         units: UNIQUE_ASSET_UNITS,
         reissuable: UNIQUE_ASSETS_REISSUABLE,
-        ipfsHash: params.ipfsHashes?.[index]
+        ipfsHash: params.ipfsHashes?.[index],
+        assetMarker: params.assetMarker
       })
     );
   }
@@ -332,7 +356,8 @@ export function createIssueQualifierTransaction(
       createAssetTransferOutput(
         params.rootChangeAddress ?? params.xnaChangeAddress ?? params.toAddress,
         parentQualifier,
-        params.changeQuantityRaw ?? OWNER_ASSET_AMOUNT
+        params.changeQuantityRaw ?? OWNER_ASSET_AMOUNT,
+        marker(params)
       )
     );
   }
@@ -344,7 +369,8 @@ export function createIssueQualifierTransaction(
       quantityRaw: params.quantityRaw,
       units: 0,
       reissuable: false,
-      ipfsHash: params.ipfsHash
+      ipfsHash: params.ipfsHash,
+      assetMarker: params.assetMarker
     })
   );
 
@@ -361,7 +387,8 @@ export function createIssueRestrictedTransaction(
   outputs.push(
     createOwnerAssetTransferOutput(
       params.ownerChangeAddress ?? params.toAddress,
-      getOwnerTokenName(params.assetName)
+      getOwnerTokenName(params.assetName),
+      marker(params)
     )
   );
   outputs.push(
@@ -371,7 +398,8 @@ export function createIssueRestrictedTransaction(
       quantityRaw: params.quantityRaw,
       units: params.units ?? 0,
       reissuable: params.reissuable ?? true,
-      ipfsHash: params.ipfsHash
+      ipfsHash: params.ipfsHash,
+      assetMarker: params.assetMarker
     })
   );
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
@@ -399,7 +427,8 @@ export function createReissueTransaction(params: ReissueTransactionParams): Buil
   outputs.push(
     createOwnerAssetTransferOutput(
       params.ownerChangeAddress ?? params.toAddress,
-      getOwnerTokenName(params.assetName)
+      getOwnerTokenName(params.assetName),
+      marker(params)
     )
   );
   outputs.push(
@@ -409,7 +438,8 @@ export function createReissueTransaction(params: ReissueTransactionParams): Buil
       quantityRaw: params.quantityRaw,
       units: params.units ?? 0,
       reissuable: params.reissuable ?? true,
-      ipfsHash: params.ipfsHash
+      ipfsHash: params.ipfsHash,
+      assetMarker: params.assetMarker
     })
   );
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
@@ -427,7 +457,8 @@ export function createReissueRestrictedTransaction(
   outputs.push(
     createOwnerAssetTransferOutput(
       params.ownerChangeAddress ?? params.toAddress,
-      getOwnerTokenName(params.assetName)
+      getOwnerTokenName(params.assetName),
+      marker(params)
     )
   );
   outputs.push(
@@ -437,7 +468,8 @@ export function createReissueRestrictedTransaction(
       quantityRaw: params.quantityRaw,
       units: params.units ?? 0,
       reissuable: params.reissuable ?? true,
-      ipfsHash: params.ipfsHash
+      ipfsHash: params.ipfsHash,
+      assetMarker: params.assetMarker
     })
   );
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
@@ -450,7 +482,8 @@ export function createQualifierTagTransaction(params: QualifierTagTransactionPar
     createAssetTransferOutput(
       params.qualifierChangeAddress,
       params.qualifierName,
-      params.qualifierChangeAmountRaw
+      params.qualifierChangeAmountRaw,
+      marker(params)
     )
   );
   for (const address of params.targetAddresses) {
@@ -486,7 +519,9 @@ export function createFreezeAddressesTransaction(
 
   const outputs: SerializedTxOutput[] = [];
   appendXnaEnvelope(outputs, undefined, undefined, params.xnaChangeAddress, params.xnaChangeSats);
-  outputs.push(createOwnerAssetTransferOutput(params.ownerChangeAddress, getOwnerTokenName(params.assetName)));
+  outputs.push(
+    createOwnerAssetTransferOutput(params.ownerChangeAddress, getOwnerTokenName(params.assetName), marker(params))
+  );
 
   for (const address of params.targetAddresses) {
     outputs.push(
@@ -508,7 +543,9 @@ export function createFreezeAssetTransaction(
 ): BuiltTransaction {
   const outputs: SerializedTxOutput[] = [];
   appendXnaEnvelope(outputs, undefined, undefined, params.xnaChangeAddress, params.xnaChangeSats);
-  outputs.push(createOwnerAssetTransferOutput(params.ownerChangeAddress, getOwnerTokenName(params.assetName)));
+  outputs.push(
+    createOwnerAssetTransferOutput(params.ownerChangeAddress, getOwnerTokenName(params.assetName), marker(params))
+  );
   outputs.push(createGlobalRestrictionOutput(params.assetName, freezeFlagFromOperation(params.operation) + 2));
   appendExtraOutputs(outputs, params.extraOutputs);
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);

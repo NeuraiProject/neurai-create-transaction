@@ -12,19 +12,12 @@ import {
 } from './bytes.js';
 import { encodeAssetDataReference } from './asset-data.js';
 import { encodeDestinationScript, encodeNullAssetDestinationScript } from './address.js';
-import {
-  OP_DROP,
-  OP_RESERVED,
-  OP_XNA_ASSET,
-  XNA_ISSUE_PREFIX,
-  XNA_OWNER_PREFIX,
-  XNA_REISSUE_PREFIX,
-  XNA_TRANSFER_PREFIX
-} from './networks.js';
+import { assetPayloadPrefix, OP_DROP, OP_RESERVED, OP_XNA_ASSET } from './networks.js';
 import { OWNER_ASSET_AMOUNT } from './constants.js';
 import type {
   AddressLike,
   AssetIssueOutputParams,
+  AssetMarkerOptions,
   AssetReissueOutputParams,
   NullAssetDestinationMode,
   SerializedTxOutput,
@@ -46,10 +39,11 @@ export function encodeAssetTransferPayload(
   assetName: string,
   amountRaw: bigint | number,
   message?: string,
-  expireTime?: bigint | number
+  expireTime?: bigint | number,
+  options?: AssetMarkerOptions
 ): Uint8Array {
   const payload = [
-    XNA_TRANSFER_PREFIX,
+    assetPayloadPrefix(options?.assetMarker, 'transfer'),
     serializeString(assetName),
     u64LE(amountRaw)
   ];
@@ -70,12 +64,13 @@ export function encodeAssetTransferScript(
   assetName: string,
   amountRaw: bigint | number,
   message?: string,
-  expireTime?: bigint | number
+  expireTime?: bigint | number,
+  options?: AssetMarkerOptions
 ): Uint8Array {
   return concatBytes(
     encodeDestinationScript(address),
     Uint8Array.of(OP_XNA_ASSET),
-    pushData(encodeAssetTransferPayload(assetName, amountRaw, message, expireTime)),
+    pushData(encodeAssetTransferPayload(assetName, amountRaw, message, expireTime, options)),
     Uint8Array.of(OP_DROP)
   );
 }
@@ -133,7 +128,8 @@ export function encodeAssetTransferScriptToScript(
   assetName: string,
   amountRaw: bigint | number,
   message?: string,
-  expireTime?: bigint | number
+  expireTime?: bigint | number,
+  options?: AssetMarkerOptions
 ): Uint8Array {
   const spkBytes =
     typeof recipientScriptPubKey === 'string'
@@ -152,7 +148,7 @@ export function encodeAssetTransferScriptToScript(
   return concatBytes(
     spkBytes,
     Uint8Array.of(OP_XNA_ASSET),
-    pushData(encodeAssetTransferPayload(assetName, amountRaw, message, expireTime)),
+    pushData(encodeAssetTransferPayload(assetName, amountRaw, message, expireTime, options)),
     Uint8Array.of(OP_DROP)
   );
 }
@@ -162,11 +158,12 @@ export function encodeNewAssetPayload(
   quantityRaw: bigint | number,
   units = 0,
   reissuable = true,
-  ipfsHash?: string
+  ipfsHash?: string,
+  options?: AssetMarkerOptions
 ): Uint8Array {
   const encodedIpfs = encodeAssetDataReference(ipfsHash);
   return concatBytes(
-    XNA_ISSUE_PREFIX,
+    assetPayloadPrefix(options?.assetMarker, 'new'),
     serializeString(assetName),
     u64LE(quantityRaw),
     Uint8Array.of(units & 0xff, reissuable ? 1 : 0, encodedIpfs.length > 0 ? 1 : 0),
@@ -180,28 +177,33 @@ export function encodeNewAssetScript(
   quantityRaw: bigint | number,
   units = 0,
   reissuable = true,
-  ipfsHash?: string
+  ipfsHash?: string,
+  options?: AssetMarkerOptions
 ): Uint8Array {
   return concatBytes(
     encodeDestinationScript(address),
     Uint8Array.of(OP_XNA_ASSET),
-    pushData(encodeNewAssetPayload(assetName, quantityRaw, units, reissuable, ipfsHash)),
+    pushData(encodeNewAssetPayload(assetName, quantityRaw, units, reissuable, ipfsHash, options)),
     Uint8Array.of(OP_DROP)
   );
 }
 
-export function encodeOwnerAssetPayload(ownerTokenName: string): Uint8Array {
+export function encodeOwnerAssetPayload(ownerTokenName: string, options?: AssetMarkerOptions): Uint8Array {
   return concatBytes(
-    XNA_OWNER_PREFIX,
+    assetPayloadPrefix(options?.assetMarker, 'owner'),
     serializeString(ownerTokenName)
   );
 }
 
-export function encodeOwnerAssetScript(address: AddressLike, ownerTokenName: string): Uint8Array {
+export function encodeOwnerAssetScript(
+  address: AddressLike,
+  ownerTokenName: string,
+  options?: AssetMarkerOptions
+): Uint8Array {
   return concatBytes(
     encodeDestinationScript(address),
     Uint8Array.of(OP_XNA_ASSET),
-    pushData(encodeOwnerAssetPayload(ownerTokenName)),
+    pushData(encodeOwnerAssetPayload(ownerTokenName, options)),
     Uint8Array.of(OP_DROP)
   );
 }
@@ -211,10 +213,11 @@ export function encodeReissueAssetPayload(
   quantityRaw: bigint | number,
   units = 0,
   reissuable = true,
-  ipfsHash?: string
+  ipfsHash?: string,
+  options?: AssetMarkerOptions
 ): Uint8Array {
   return concatBytes(
-    XNA_REISSUE_PREFIX,
+    assetPayloadPrefix(options?.assetMarker, 'reissue'),
     serializeString(assetName),
     u64LE(quantityRaw),
     Uint8Array.of(units & 0xff, reissuable ? 1 : 0),
@@ -228,12 +231,13 @@ export function encodeReissueAssetScript(
   quantityRaw: bigint | number,
   units = 0,
   reissuable = true,
-  ipfsHash?: string
+  ipfsHash?: string,
+  options?: AssetMarkerOptions
 ): Uint8Array {
   return concatBytes(
     encodeDestinationScript(address),
     Uint8Array.of(OP_XNA_ASSET),
-    pushData(encodeReissueAssetPayload(assetName, quantityRaw, units, reissuable, ipfsHash)),
+    pushData(encodeReissueAssetPayload(assetName, quantityRaw, units, reissuable, ipfsHash, options)),
     Uint8Array.of(OP_DROP)
   );
 }
@@ -312,11 +316,14 @@ export function createXnaOutput(address: AddressLike, valueSats: bigint | number
 export function createAssetTransferOutput(
   address: AddressLike,
   assetName: string,
-  amountRaw: bigint | number
+  amountRaw: bigint | number,
+  options?: AssetMarkerOptions
 ): SerializedTxOutput {
   return {
     valueSats: 0n,
-    scriptPubKeyHex: bytesToHex(encodeAssetTransferScript(address, assetName, amountRaw))
+    scriptPubKeyHex: bytesToHex(
+      encodeAssetTransferScript(address, assetName, amountRaw, undefined, undefined, options)
+    )
   };
 }
 
@@ -331,7 +338,8 @@ export function createTransferWithMessageOutput(
         params.assetName,
         params.amountRaw,
         params.message,
-        params.expireTime
+        params.expireTime,
+        { assetMarker: params.assetMarker }
       )
     )
   };
@@ -339,21 +347,25 @@ export function createTransferWithMessageOutput(
 
 export function createOwnerAssetIssueOutput(
   address: AddressLike,
-  ownerTokenName: string
+  ownerTokenName: string,
+  options?: AssetMarkerOptions
 ): SerializedTxOutput {
   return {
     valueSats: 0n,
-    scriptPubKeyHex: bytesToHex(encodeOwnerAssetScript(address, ownerTokenName))
+    scriptPubKeyHex: bytesToHex(encodeOwnerAssetScript(address, ownerTokenName, options))
   };
 }
 
 export function createOwnerAssetTransferOutput(
   address: AddressLike,
-  ownerTokenName: string
+  ownerTokenName: string,
+  options?: AssetMarkerOptions
 ): SerializedTxOutput {
   return {
     valueSats: 0n,
-    scriptPubKeyHex: bytesToHex(encodeAssetTransferScript(address, ownerTokenName, OWNER_ASSET_AMOUNT))
+    scriptPubKeyHex: bytesToHex(
+      encodeAssetTransferScript(address, ownerTokenName, OWNER_ASSET_AMOUNT, undefined, undefined, options)
+    )
   };
 }
 
@@ -367,7 +379,8 @@ export function createIssueAssetOutput(params: AssetIssueOutputParams): Serializ
         params.quantityRaw,
         params.units ?? 0,
         params.reissuable ?? true,
-        params.ipfsHash
+        params.ipfsHash,
+        { assetMarker: params.assetMarker }
       )
     )
   };
@@ -383,7 +396,8 @@ export function createReissueAssetOutput(params: AssetReissueOutputParams): Seri
         params.quantityRaw,
         params.units ?? 0,
         params.reissuable ?? true,
-        params.ipfsHash
+        params.ipfsHash,
+        { assetMarker: params.assetMarker }
       )
     )
   };
@@ -431,7 +445,9 @@ export function createGlobalRestrictionOutput(
 }
 
 export function createTransferOutput(params: TransferOutputParams): SerializedTxOutput {
-  return createAssetTransferOutput(params.address, params.assetName, params.amountRaw);
+  return createAssetTransferOutput(params.address, params.assetName, params.amountRaw, {
+    assetMarker: params.assetMarker
+  });
 }
 
 /**
@@ -453,7 +469,8 @@ export function createAssetTransferToScriptOutput(
         params.assetName,
         params.amountRaw,
         params.message,
-        params.expireTime
+        params.expireTime,
+        { assetMarker: params.assetMarker }
       )
     )
   };

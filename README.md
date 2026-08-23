@@ -283,6 +283,51 @@ spend with `serializeTransaction` from this package's transaction codec
 > until that vector exists, treat the complete DEX covenant flow as
 > experimental.
 
+## Asset payload marker (NIP-040)
+
+Every transfer / issue / owner / reissue payload opens with a 3-byte marker.
+NIP-040 migrates it from the Ravencoin-inherited `rvn` (`72 76 6e`) to `xna`
+(`78 6e 61`) **from an activation height per network**: blocks below it only
+accept `rvn` on new asset outputs, blocks at or above it only accept `xna`
+(testnet: 303000, already crossed; regtest: 1; mainnet: not scheduled yet).
+
+This library does **not** know chain state and never infers the marker from
+an address or a network. The node tells you which marker the next block
+requires, and you pass it through:
+
+```ts
+const info = await rpc('getblockchaininfo', []);     // node ≥ commit 347362b
+const built = createStandardAssetTransferTransaction({
+  inputs,
+  transfers: [{ address, assetName: 'CAT', amountRaw: 100n }],
+  assetMarker: info.asset_marker                     // 'rvn' | 'xna'
+});
+```
+
+- `assetMarker` on any transaction builder (and on `createFromOperation`
+  params) applies to every asset output that builder creates, including the
+  owner-token and issuance outputs it adds internally.
+- `assetMarker` on an individual output (`transfers[]`, `transferMessages[]`,
+  `transfersToScript[]`, `AssetIssueOutputParams`, `AssetReissueOutputParams`)
+  takes precedence over the transaction-level value.
+- The low-level `encode*Payload` / `encode*Script` helpers and the positional
+  output helpers (`createAssetTransferOutput`, `createOwnerAssetIssueOutput`,
+  `createOwnerAssetTransferOutput`) take a trailing
+  `options?: { assetMarker }`.
+- **Default is `'rvn'`** everywhere, byte-for-byte what 0.6.0 produced. Any
+  other value than `'rvn'` / `'xna'` throws at build time.
+- `extraOutputs` are opaque: they are appended verbatim. If you add an asset
+  output there, build it with the right marker yourself.
+- Building offline without a node: pass the marker you know to be right for
+  the height the transaction will be mined at; the library will not guess.
+- A transaction built with the wrong marker is rejected by the node
+  (`bad-txns-legacy-asset-marker-after-nip040` / its pre-activation twin) and
+  evicted from the mempool at the activation boundary; rebuild and re-sign.
+
+`assetPayloadPrefix(marker, type)`, `resolveAssetMarker(value)` and
+`DEFAULT_ASSET_MARKER` are exported for consumers that assemble payloads
+themselves.
+
 ## Transaction codec (v1/v2/v3, witness, vrefin)
 
 Since 0.5.1 the package ships a full transaction codec alongside the legacy
@@ -343,6 +388,10 @@ const built = createFromOperation({
 ```
 
 ## Notes
+
+- **0.7.0**: NIP-040 support through the explicit `assetMarker` option (see
+  above). No behaviour change without it: the default stays `rvn`. The
+  internal `XNA_*_PREFIX` constants were replaced by `assetPayloadPrefix`.
 
 - This package mirrors the node's expanded physical outputs, not the RPC JSON.
 - Any `nq1...` / `tnq1...` destination is treated as AuthScript `witness v1`

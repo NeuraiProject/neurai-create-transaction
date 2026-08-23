@@ -2,6 +2,9 @@ export type {
   AddressLike,
   AddressDestination,
   AddressObjectLike,
+  AssetMarker,
+  AssetMarkerOptions,
+  AssetPayloadType,
   AuthScriptAddressDestination,
   AssetIssueOutputParams,
   AssetReissueOutputParams,
@@ -136,6 +139,12 @@ export {
   isRawAssetDataReferenceHex,
   isTxidAssetReference
 } from './asset-data.js';
+
+export {
+  assetPayloadPrefix,
+  DEFAULT_ASSET_MARKER,
+  resolveAssetMarker
+} from './networks.js';
 
 export {
   getBurnAddressForOperation,

@@ -389,6 +389,38 @@ const built = createFromOperation({
 
 ## Notes
 
+- **0.8.0**: two behaviour changes, both aligning the encoder with the node.
+
+  **Reissue `units` omitted now means "keep the current units"** (`0xff`),
+  which is what the node's own `reissue` RPC defaults to. It used to encode
+  `0x00`, i.e. "set units to zero", which the node rejected outright on any
+  asset with `units > 0` (`unit must be larger than current unit selection`).
+  An explicit `0` still encodes `0x00`. Values outside `-1..8` are now
+  rejected instead of masked: `units & 0xff` used to turn `-2` into `0xfe` and
+  `255` into `0xff`, manufacturing a valid-looking "unchanged" byte out of an
+  invalid input. *Migration:* a reissue that omitted `units` on a `units = 0`
+  asset worked before and still works, but its bytes — and therefore its txid
+  — change. Pass `units: 0` explicitly to keep the previous encoding.
+
+  **An unrecognised `network` now throws** instead of resolving to testnet. A
+  JavaScript caller passing the alias `'mainnet'` used to land in the testnet
+  branch and slip past the DEPIN mainnet guard, while the canonical `'xna'`
+  triggered it. *Migration:* normalize aliases before calling (`'mainnet'` →
+  `'xna'`, `'testnet'` → `'xna-test'`). This also reaches
+  `getBurnAddressForOperation`, which previously answered `'regtest'` with the
+  **testnet** burn addresses — wrong, since regtest chainparams use one global
+  burn address for every operation and only `ISSUE_ROOT` happened to coincide.
+  Pass `REGTEST_GLOBAL_BURN_ADDRESS` as the `burnAddress` override instead.
+
+- **0.7.1**: `FREEZE_ASSET` and `UNFREEZE_ASSET` now emit the global
+  restriction flags `1` and `0`. They emitted `3` and `2`, and the node
+  rejected every such transaction with
+  `bad-txns-null-data-flag-must-be-0-or-1`, so those two discriminants could
+  not reach a mempool at all. Per-address `FREEZE_ADDRESSES` /
+  `UNFREEZE_ADDRESSES` and qualifier tag/untag were already correct and are
+  unchanged. No caller can depend on the previous bytes, since they never
+  confirmed.
+
 - **0.7.0**: NIP-040 support through the explicit `assetMarker` option (see
   above). No behaviour change without it: the default stays `rvn`. The
   internal `XNA_*_PREFIX` constants were replaced by `assetPayloadPrefix`.

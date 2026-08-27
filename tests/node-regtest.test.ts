@@ -6,6 +6,7 @@ import {
   createDepinSelfRevokeTransaction,
   createDepinTransferTransaction,
   createFreezeAddressesTransaction,
+  createFreezeAssetTransaction,
   createIssueAssetTransaction,
   createIssueDepinTransaction,
   createPaymentTransaction,
@@ -122,6 +123,15 @@ function assetUtxo(address: string, assetName: string): { txid: string; outputIn
   const utxos = cliJson('getaddressutxos', JSON.stringify({ addresses: [address], assetName }));
   if (!utxos.length) throw new Error(`no ${assetName} utxo at ${address}`);
   return utxos[0];
+}
+
+function ownerTokenAddress(ownerTokenName: string): string {
+  // listaddressesbyasset returns { address: amount }; the `onlytotal` flag
+  // would return a count instead, which is not what we need here.
+  const holders = cliJson('listaddressesbyasset', ownerTokenName);
+  const [address] = Object.keys(holders);
+  if (!address) throw new Error(`no holder for ${ownerTokenName}`);
+  return address;
 }
 
 function signAndTest(rawTx: string): { allowed: boolean; reason?: string; hex: string } {
@@ -399,6 +409,118 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
     // reissued (self-revocation relocates, it does not destroy).
     expect(cliJson('listmyassets', '&DEVICE')['&DEVICE']).toBe(8);
   }, 60_000);
+
+  // ---------------------------------------------------------------------
+  // 0.7.1 / 0.8.0 consensus alignment. Both scenarios failed against the node
+  // before the fix: the reissue with `unit must be larger than current unit
+  // selection`, the global restriction with
+  // `bad-txns-null-data-flag-must-be-0-or-1`.
+  // ---------------------------------------------------------------------
+
+  it('accepts a library-built reissue that OMITS units on a units=2 asset', () => {
+    // The regression this fixes. Omitted units must encode 0xff ("keep"); the
+    // previous default of 0x00 asked the node to drop the asset to units=0.
+    cli('issue', 'UNITS2', 1000, '', '', 2, 'true');
+    cli('generate', 1);
+    cli('sendtoaddress', A, 210);
+    cli('generate', 1);
+
+    const unitsOwner = ownerTokenAddress('UNITS2!');
+    const ownerUtxo = cliJson(
+      'getaddressutxos',
+      JSON.stringify({ addresses: [unitsOwner], assetName: 'UNITS2!' })
+    )[0];
+    const fees = xnaUtxo(A, 210);
+
+    const built = createReissueTransaction({
+      assetMarker: ASSET_MARKER,
+      inputs: [
+        { txid: ownerUtxo.txid, vout: ownerUtxo.outputIndex },
+        { txid: fees.txid, vout: fees.vout }
+      ],
+      burnAddress: BURN_REGTEST,
+      burnAmountSats: xnaToSatoshis(200),
+      xnaChangeAddress: A,
+      xnaChangeSats: xnaToSatoshis(fees.amount - 200) - FEE,
+      toAddress: A,
+      assetName: 'UNITS2',
+      quantityRaw: xnaToSatoshis(5),
+      ownerChangeAddress: A
+      // units omitted on purpose
+    });
+
+    // The units byte must be 0xff before the node ever sees it.
+    const reissueOut = built.outputs.at(-1)!.scriptPubKeyHex;
+    expect(reissueOut.slice(-6, -4)).toBe('ff');
+
+    const result = signAndTest(built.rawTx);
+    expect(result.allowed, `reject: ${result.reason}`).toBe(true);
+    sendAndMine(result.hex);
+
+    const data = cliJson('getassetdata', 'UNITS2');
+    expect(data.amount).toBe(1005);
+    expect(data.units).toBe(2); // units preserved, not reset to 0
+  }, 120_000);
+
+  it('accepts a library-built global freeze, then unfreeze, in sequence', () => {
+    // Stateful: the restricted asset must exist and be mined, the freeze must
+    // be mined before the unfreeze is meaningful.
+    cli('issue', 'RESTR', 1000, '', '', 0, 'true');
+    cli('generate', 1);
+    cli('issuequalifierasset', '#RESTRQ');
+    cli('generate', 1);
+    const holder = cli('getnewaddress');
+    cli('addtagtoaddress', '#RESTRQ', holder);
+    cli('generate', 1);
+    cli('issuerestrictedasset', '$RESTR', 100, '#RESTRQ', holder);
+    cli('generate', 1);
+    cli('sendtoaddress', A, 5);
+    cli('generate', 1);
+
+    const ownerAddress = ownerTokenAddress('RESTR!');
+    const restrictedOwner = () =>
+      cliJson('getaddressutxos', JSON.stringify({ addresses: [ownerAddress], assetName: 'RESTR!' }))[0];
+
+    const freezeFees = xnaUtxo(A, 1);
+    const freeze = createFreezeAssetTransaction({
+      assetMarker: ASSET_MARKER,
+      inputs: [
+        { txid: restrictedOwner().txid, vout: restrictedOwner().outputIndex },
+        { txid: freezeFees.txid, vout: freezeFees.vout }
+      ],
+      assetName: '$RESTR',
+      operation: 'freeze',
+      ownerChangeAddress: ownerAddress,
+      xnaChangeAddress: A,
+      xnaChangeSats: xnaToSatoshis(freezeFees.amount) - FEE
+    });
+    expect(freeze.outputs.at(-1)!.scriptPubKeyHex.slice(-2)).toBe('01');
+
+    const freezeResult = signAndTest(freeze.rawTx);
+    expect(freezeResult.allowed, `freeze reject: ${freezeResult.reason}`).toBe(true);
+    sendAndMine(freezeResult.hex);
+    expect(cliJson('checkglobalrestriction', '$RESTR')).toBe(true);
+
+    const unfreezeFees = xnaUtxo(A, 1);
+    const unfreeze = createFreezeAssetTransaction({
+      assetMarker: ASSET_MARKER,
+      inputs: [
+        { txid: restrictedOwner().txid, vout: restrictedOwner().outputIndex },
+        { txid: unfreezeFees.txid, vout: unfreezeFees.vout }
+      ],
+      assetName: '$RESTR',
+      operation: 'unfreeze',
+      ownerChangeAddress: ownerAddress,
+      xnaChangeAddress: A,
+      xnaChangeSats: xnaToSatoshis(unfreezeFees.amount) - FEE
+    });
+    expect(unfreeze.outputs.at(-1)!.scriptPubKeyHex.slice(-2)).toBe('00');
+
+    const unfreezeResult = signAndTest(unfreeze.rawTx);
+    expect(unfreezeResult.allowed, `unfreeze reject: ${unfreezeResult.reason}`).toBe(true);
+    sendAndMine(unfreezeResult.hex);
+    expect(cliJson('checkglobalrestriction', '$RESTR')).toBe(false);
+  }, 180_000);
 
   it('rejects a library-built issuance that forces the legacy rvn marker after NIP-040', () => {
     const utxo = xnaUtxo(A, 15);

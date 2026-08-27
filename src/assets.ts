@@ -208,10 +208,46 @@ export function encodeOwnerAssetScript(
   );
 }
 
+/** "Keep the asset's current units", encoded as the signed byte -1 (0xff). */
+export const REISSUE_UNITS_UNCHANGED = -1;
+
+/**
+ * Resolve the `units` byte of a reissue payload.
+ *
+ * Omitting `units` means "do not change them", which the protocol spells `-1`
+ * (`0xff`) — the value the node's own `reissue` RPC defaults to. Its
+ * validation is `nNewUnits == -1 || nNewUnits >= currentUnits`, so the
+ * previous default of `0` said "set units to 0" and was rejected outright for
+ * any asset with `units > 0` (`unit must be larger than current unit
+ * selection`).
+ *
+ * An explicit `0` still encodes `0x00`: it is legitimate for an asset that
+ * already has `units=0`, and folding it into -1 would lose the distinction in
+ * the other direction.
+ *
+ * The range is validated rather than masked. `units & 0xff` used to turn `-2`
+ * into `0xfe` and `255` into `0xff` — manufacturing a valid-looking
+ * "unchanged" byte out of an invalid input.
+ *
+ * @param units - Requested units, or undefined to keep the current ones
+ * @returns The byte to encode
+ * @throws If units is not an integer in -1..8
+ */
+function reissueUnitsByte(units: number | undefined): number {
+  const resolved = units ?? REISSUE_UNITS_UNCHANGED;
+  if (!Number.isInteger(resolved) || resolved < -1 || resolved > 8) {
+    throw new Error(
+      `Invalid reissue units: ${units}. Use an integer 0..8 to set the units, ` +
+        `or -1 (or omit it) to keep the asset's current units.`
+    );
+  }
+  return resolved & 0xff;
+}
+
 export function encodeReissueAssetPayload(
   assetName: string,
   quantityRaw: bigint | number,
-  units = 0,
+  units?: number,
   reissuable = true,
   ipfsHash?: string,
   options?: AssetMarkerOptions
@@ -220,7 +256,7 @@ export function encodeReissueAssetPayload(
     assetPayloadPrefix(options?.assetMarker, 'reissue'),
     serializeString(assetName),
     u64LE(quantityRaw),
-    Uint8Array.of(units & 0xff, reissuable ? 1 : 0),
+    Uint8Array.of(reissueUnitsByte(units), reissuable ? 1 : 0),
     encodeAssetDataReference(ipfsHash)
   );
 }
@@ -229,7 +265,7 @@ export function encodeReissueAssetScript(
   address: AddressLike,
   assetName: string,
   quantityRaw: bigint | number,
-  units = 0,
+  units?: number,
   reissuable = true,
   ipfsHash?: string,
   options?: AssetMarkerOptions
@@ -394,7 +430,8 @@ export function createReissueAssetOutput(params: AssetReissueOutputParams): Seri
         params.address,
         params.assetName,
         params.quantityRaw,
-        params.units ?? 0,
+        // Omitted means "keep the current units" (-1); do NOT collapse to 0.
+        params.units,
         params.reissuable ?? true,
         params.ipfsHash,
         { assetMarker: params.assetMarker }

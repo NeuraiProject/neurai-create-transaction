@@ -92,6 +92,25 @@ function appendExtraOutputs(outputs: SerializedTxOutput[], extraOutputs?: Serial
   }
 }
 
+/**
+ * Null-asset data flag: 1 freezes, 0 unfreezes.
+ *
+ * Consensus accepts nothing else. The node's `VerifyNullAssetDataFlag`
+ * (`src/assets/assets.cpp`) rejects any other value with
+ * `bad-txns-null-data-flag-must-be-0-or-1`, and it takes neither the network
+ * nor the height, so the mapping is identical on mainnet, testnet and regtest.
+ *
+ * These same two values serve the per-address restriction, the qualifier
+ * tag/untag AND the global restriction: `VerifyRestrictedAddressChange`,
+ * `VerifyQualifierChange` and `VerifyGlobalRestrictedChange` all delegate to
+ * that one check. Captured from the node's own transactions:
+ *
+ *   freezerestrictedasset   $PROBE → c0505008062450524f424501   (flag 01)
+ *   unfreezerestrictedasset $PROBE → c0505008062450524f424500   (flag 00)
+ *
+ * Until 0.7.1 the global restriction added 2 to this value, emitting 3 and 2,
+ * which the node rejected outright.
+ */
 function freezeFlagFromOperation(operation: FreezeOperation): number {
   return operation === 'freeze' ? 1 : 0;
 }
@@ -436,7 +455,8 @@ export function createReissueTransaction(params: ReissueTransactionParams): Buil
       address: params.toAddress,
       assetName: params.assetName,
       quantityRaw: params.quantityRaw,
-      units: params.units ?? 0,
+      // Omitted means "keep the current units" (-1); do NOT collapse to 0.
+      units: params.units,
       reissuable: params.reissuable ?? true,
       ipfsHash: params.ipfsHash,
       assetMarker: params.assetMarker
@@ -466,7 +486,8 @@ export function createReissueRestrictedTransaction(
       address: params.toAddress,
       assetName: params.assetName,
       quantityRaw: params.quantityRaw,
-      units: params.units ?? 0,
+      // Omitted means "keep the current units" (-1); do NOT collapse to 0.
+      units: params.units,
       reissuable: params.reissuable ?? true,
       ipfsHash: params.ipfsHash,
       assetMarker: params.assetMarker
@@ -546,7 +567,7 @@ export function createFreezeAssetTransaction(
   outputs.push(
     createOwnerAssetTransferOutput(params.ownerChangeAddress, getOwnerTokenName(params.assetName), marker(params))
   );
-  outputs.push(createGlobalRestrictionOutput(params.assetName, freezeFlagFromOperation(params.operation) + 2));
+  outputs.push(createGlobalRestrictionOutput(params.assetName, freezeFlagFromOperation(params.operation)));
   appendExtraOutputs(outputs, params.extraOutputs);
   return buildTransaction(params.version, params.locktime, params.inputs, outputs);
 }

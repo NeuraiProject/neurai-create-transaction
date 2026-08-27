@@ -196,6 +196,12 @@ export interface AssetReissueOutputParams {
   address: AddressLike;
   assetName: string;
   quantityRaw: bigint | number;
+  /**
+   * Decimal places. **Omitting it keeps the asset's current units** (encoded
+   * as -1 / 0xff, the same default the node's `reissue` RPC uses). An
+   * explicit `0` sets them to zero, which the node only accepts on an asset
+   * that already has `units=0`. Must be an integer in -1..8.
+   */
   units?: number;
   reissuable?: boolean;
   ipfsHash?: string;
@@ -355,6 +361,12 @@ export interface ReissueTransactionParams extends AssetTransactionBaseParams {
   toAddress: AddressLike;
   assetName: string;
   quantityRaw: bigint | number;
+  /**
+   * Decimal places. **Omitting it keeps the asset's current units** (encoded
+   * as -1 / 0xff, the same default the node's `reissue` RPC uses). An
+   * explicit `0` sets them to zero, which the node only accepts on an asset
+   * that already has `units=0`. Must be an integer in -1..8.
+   */
   units?: number;
   reissuable?: boolean;
   ipfsHash?: string;

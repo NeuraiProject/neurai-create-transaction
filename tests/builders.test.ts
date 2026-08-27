@@ -520,7 +520,9 @@ describe('builders', () => {
 
     expect(built.outputs).toHaveLength(3);
     expect(built.outputs[1].scriptPubKeyHex).toContain('72766e74');
-    expect(built.outputs[2].scriptPubKeyHex).toBe('c050500907245052494e544503');
+    // Flag 01 = freeze. Until 0.7.1 this read 03 and the node rejected it with
+    // bad-txns-null-data-flag-must-be-0-or-1.
+    expect(built.outputs[2].scriptPubKeyHex).toBe('c050500907245052494e544501');
   });
 
   it('creates mixed asset transfer transactions', () => {

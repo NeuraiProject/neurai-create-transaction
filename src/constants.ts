@@ -57,10 +57,58 @@ const BURN_COSTS_XNA: Record<BurnOperationType, number> = {
 // regtest; `getBurnAddressForOperation` only models mainnet/testnet.
 export const REGTEST_GLOBAL_BURN_ADDRESS = 'tBURNXXXXXXXXXXXXXXXXXXXXXXXVZLroy';
 
+/**
+ * Every value `SupportedNetwork` admits, and the chain family each belongs to.
+ *
+ * Written as an exhaustive map rather than a couple of comparisons so that a
+ * network added to the union upstream fails to compile here instead of
+ * silently defaulting to testnet.
+ */
+const NETWORK_FAMILY: Record<SupportedNetwork, 'mainnet' | 'testnet'> = {
+  'xna': 'mainnet',
+  'xna-legacy': 'mainnet',
+  'xna-pq': 'mainnet',
+  'xna-test': 'testnet',
+  'xna-legacy-test': 'testnet',
+  'xna-pq-test': 'testnet'
+};
+
+/**
+ * Resolve a network to its chain family, rejecting anything unrecognised.
+ *
+ * This used to return `'testnet'` for every value that was not explicitly
+ * mainnet. TypeScript keeps its own callers honest, but a JavaScript consumer
+ * passing the alias `'mainnet'` — which other libraries in the stack accept —
+ * landed in the testnet branch and **slipped past the DEPIN mainnet guard**,
+ * while the canonical `'xna'` triggered it. An unrecognised label is a caller
+ * error, not an implicit testnet.
+ *
+ * Callers that speak in aliases must normalize first: `'mainnet'` to `'xna'`,
+ * `'testnet'` to `'xna-test'`.
+ *
+ * Regtest is not a member of `SupportedNetwork` — it shares testnet's address
+ * prefixes — and now throws here. That reaches `getBurnAddressForOperation`,
+ * which used to answer with the TESTNET burn addresses: wrong for regtest,
+ * whose chainparams use a single global burn address for every operation, so
+ * only ISSUE_ROOT happened to coincide. Pass `REGTEST_GLOBAL_BURN_ADDRESS` as
+ * the `burnAddress` override instead; the previous answer had to be replaced
+ * anyway.
+ *
+ * @param network - Network label
+ * @returns The chain family
+ * @throws If the label is not a supported network
+ */
 function resolveNetworkFamily(network: SupportedNetwork): 'mainnet' | 'testnet' {
-  return network === 'xna' || network === 'xna-pq' || network === 'xna-legacy'
-    ? 'mainnet'
-    : 'testnet';
+  const family = NETWORK_FAMILY[network];
+  if (family === undefined) {
+    throw new Error(
+      `Unsupported network: ${JSON.stringify(network)}. Expected one of ` +
+        `${Object.keys(NETWORK_FAMILY).join(', ')}. Aliases such as 'mainnet' ` +
+        `or 'testnet' must be normalized by the caller ('xna', 'xna-test'); ` +
+        `for regtest, pass REGTEST_GLOBAL_BURN_ADDRESS as the burnAddress override.`
+    );
+  }
+  return family;
 }
 
 export function getBurnAddressForOperation(

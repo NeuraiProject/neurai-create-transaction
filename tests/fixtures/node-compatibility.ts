@@ -1,3 +1,23 @@
+/**
+ * Two families of vectors live in this file, and they must not be mixed.
+ *
+ * 1. `NODE_FIXTURE_*` — historical, pre-NIP-040. Their asset payloads open
+ *    with the legacy `rvn` marker (`72766e`), which the reference node no
+ *    longer produces. They are regression anchors for the surrounding
+ *    structure, NOT statements about what the node accepts today. One of them,
+ *    `NODE_FIXTURE_UNFREEZE_ASSET`, is known to be consensus-invalid — see its
+ *    own note.
+ *
+ * 2. `NODE_VECTOR_*` — captured from a running node, with provenance recorded
+ *    in `NODE_VECTOR_PROVENANCE`. These carry the `xna` marker and are what the
+ *    chain accepts now.
+ *
+ * Regenerate the second family with `scripts/generate-node-fixtures.mjs`.
+ * Never "fix" a historical vector in place: a vector is evidence of what some
+ * node emitted at some height, and rewriting its bytes destroys the only thing
+ * it was good for.
+ */
+
 export const NODE_COMPAT_INPUTS = [
   { txid: '11'.repeat(32), vout: 0 },
   { txid: '22'.repeat(32), vout: 1 }
@@ -64,6 +84,21 @@ export const NODE_FIXTURE_UNFREEZE_ADDRESSES = {
   ]
 } as const;
 
+/**
+ * BROKEN VECTOR — kept deliberately, do not repair.
+ *
+ * Its global-restriction output ends in flag `02`
+ * (`c050500907245052494e544502`). The current node emits `00` to unfreeze and
+ * `01` to freeze, and rejects anything else with
+ * `bad-txns-null-data-flag-must-be-0-or-1`, so a transaction shaped like this
+ * one cannot enter a mempool.
+ *
+ * This fixture is why the defect survived to 0.7.0: the compatibility test
+ * compared the library against it and passed, describing a behaviour the chain
+ * refuses. It now serves the opposite purpose — the test below asserts that we
+ * NO LONGER produce these bytes. Correct output lives in
+ * `NODE_VECTOR_GLOBAL_UNFREEZE`.
+ */
 export const NODE_FIXTURE_UNFREEZE_ASSET = {
   rawTx:
     '020000000211111111111111111111111111111111111111111111111111111111111111110000000000ffffffff22222222222222222222222222222222222222222222222222222222222222220100000000ffffffff0339300000000000001976a91486aeff20d313868b3ee11740d113ac47fd229ec288ac00000000000000003076a91486aeff20d313868b3ee11740d113ac47fd229ec288acc01472766e74075052494e54452100e1f505000000007500000000000000000dc050500907245052494e54450200000000',
@@ -72,4 +107,47 @@ export const NODE_FIXTURE_UNFREEZE_ASSET = {
     '76a91486aeff20d313868b3ee11740d113ac47fd229ec288acc01472766e74075052494e54452100e1f5050000000075',
     'c050500907245052494e544502'
   ]
+} as const;
+
+// ---------------------------------------------------------------------------
+// Post-NIP-040 vectors captured from a running node.
+// Regenerate with: node scripts/generate-node-fixtures.mjs
+// ---------------------------------------------------------------------------
+
+/** Where the NODE_VECTOR_* values below came from. */
+export const NODE_VECTOR_PROVENANCE = {
+  image: 'neurai-regtest-depin:347362b',
+  chain: 'regtest',
+  height: 500,
+  assetMarker: 'xna'
+} as const;
+
+/**
+ * `reissue FIXA 5 <addr> "" true -1` on an asset with `units=2`.
+ *
+ * Payload: marker `786e61` + type `72`, name `FIXA`, amount `0065cd1d00000000`
+ * (5 * 1e8), then units `ff` — the node's own encoding of "keep the current
+ * units" — and reissuable `01`.
+ */
+export const NODE_VECTOR_REISSUE_UNITS_UNCHANGED = {
+  scriptPubKeyHex:
+    '76a914a41693db3e6b2c305d4e3a68cf2811dc3e9387e188acc013786e617204464958410065cd1d00000000ff0175',
+  assetName: 'FIXA',
+  amountRaw: 500000000n,
+  unitsByte: 0xff,
+  reissuableByte: 0x01
+} as const;
+
+/** `freezerestrictedasset $FIXA` — global restriction flag `01`. */
+export const NODE_VECTOR_GLOBAL_FREEZE = {
+  scriptPubKeyHex: 'c050500705244649584101',
+  assetName: '$FIXA',
+  flag: 0x01
+} as const;
+
+/** `unfreezerestrictedasset $FIXA` — global restriction flag `00`. */
+export const NODE_VECTOR_GLOBAL_UNFREEZE = {
+  scriptPubKeyHex: 'c050500705244649584100',
+  assetName: '$FIXA',
+  flag: 0x00
 } as const;

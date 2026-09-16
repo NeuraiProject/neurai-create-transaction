@@ -1,3 +1,4 @@
+import { assertMoneyRange, decimalToSatoshis, toRawInteger } from './amounts.js';
 import type { AddressLike, BurnOperationType, SupportedNetwork } from './types.js';
 import { inferNetworkFromAddress } from './networks.js';
 
@@ -126,7 +127,7 @@ export function getBurnAmountXna(operation: BurnOperationType, multiplier = 1): 
 }
 
 export function getBurnAmountSats(operation: BurnOperationType, multiplier = 1): bigint {
-  return BigInt(Math.round(getBurnAmountXna(operation, multiplier) * 1e8));
+  return assertMoneyRange(decimalToSatoshis(BURN_COSTS_XNA[operation]) * assertMoneyRange(toRawInteger(multiplier, 'burn multiplier')));
 }
 
 export function inferNetworkFromAnyAddress(address: AddressLike): SupportedNetwork {

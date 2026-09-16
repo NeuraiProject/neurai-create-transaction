@@ -1,3 +1,4 @@
+import { assertMoneyRange } from './amounts.js';
 import { compactSize, concatBytes, ensureHex, hexToBytes, reverseBytes, u32LE, u64LE } from './bytes.js';
 import type { SerializedTxOutput, TxInput, UnsignedTransaction } from './types.js';
 
@@ -24,6 +25,9 @@ export function serializeOutput(output: SerializedTxOutput): Uint8Array {
 }
 
 export function createUnsignedTransaction(tx: UnsignedTransaction): string {
+  let total = 0n;
+  for (const output of tx.outputs) total += assertMoneyRange(output.valueSats, 'output');
+  assertMoneyRange(total, 'total outputs');
   const version = tx.version ?? 2;
   const locktime = tx.locktime ?? 0;
 

@@ -1,3 +1,4 @@
+import { assertMoneyRange, decimalToSatoshis, toRawInteger } from './amounts.js';
 import {
   asciiBytes,
   bytesToHex,
@@ -27,11 +28,11 @@ import type {
   TransferWithMessageOutputParams
 } from './types.js';
 
-export function xnaToSatoshis(amount: number): bigint {
-  return BigInt(Math.round(Number(amount || 0) * 1e8));
+export function xnaToSatoshis(amount: number | string): bigint {
+  return assertMoneyRange(decimalToSatoshis(amount));
 }
 
-export function assetUnitsToRaw(amount: number): bigint {
+export function assetUnitsToRaw(amount: number | string): bigint {
   return xnaToSatoshis(amount);
 }
 
@@ -45,13 +46,13 @@ export function encodeAssetTransferPayload(
   const payload = [
     assetPayloadPrefix(options?.assetMarker, 'transfer'),
     serializeString(assetName),
-    u64LE(amountRaw)
+    u64LE(assertMoneyRange(amountRaw))
   ];
 
   const encodedMessage = encodeAssetDataReference(message);
   if (encodedMessage.length > 0) {
     payload.push(encodedMessage);
-    if (expireTime !== undefined && BigInt(expireTime) !== 0n) {
+    if (expireTime !== undefined && toRawInteger(expireTime) !== 0n) {
       payload.push(i64LE(expireTime));
     }
   }
@@ -165,7 +166,7 @@ export function encodeNewAssetPayload(
   return concatBytes(
     assetPayloadPrefix(options?.assetMarker, 'new'),
     serializeString(assetName),
-    u64LE(quantityRaw),
+    u64LE(assertMoneyRange(quantityRaw)),
     Uint8Array.of(units & 0xff, reissuable ? 1 : 0, encodedIpfs.length > 0 ? 1 : 0),
     encodedIpfs
   );
@@ -255,7 +256,7 @@ export function encodeReissueAssetPayload(
   return concatBytes(
     assetPayloadPrefix(options?.assetMarker, 'reissue'),
     serializeString(assetName),
-    u64LE(quantityRaw),
+    u64LE(assertMoneyRange(quantityRaw)),
     Uint8Array.of(reissueUnitsByte(units), reissuable ? 1 : 0),
     encodeAssetDataReference(ipfsHash)
   );
@@ -344,7 +345,7 @@ export function encodeGlobalRestrictionScript(
 
 export function createXnaOutput(address: AddressLike, valueSats: bigint | number): SerializedTxOutput {
   return {
-    valueSats: typeof valueSats === 'bigint' ? valueSats : BigInt(valueSats),
+    valueSats: assertMoneyRange(valueSats),
     scriptPubKeyHex: bytesToHex(encodeDestinationScript(address))
   };
 }

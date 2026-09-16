@@ -1,6 +1,6 @@
 {
   "name": "@neuraiproject/neurai-create-transaction",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Local Neurai raw transaction creation helpers for browser and Node environments",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -17,7 +17,12 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/browser.js"
     },
-    "./global": "./dist/NeuraiCreateTransaction.global.js"
+    "./global": "./dist/NeuraiCreateTransaction.global.js",
+    "./amounts": {
+      "types": "./dist/amounts.d.ts",
+      "import": "./dist/amounts.js",
+      "require": "./dist/amounts.cjs"
+    }
   },
   "files": [
     "dist",
@@ -36,7 +41,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@neuraiproject/neurai-key": "^4.0.0",
+    "@neuraiproject/neurai-key": "^4.0.1",
     "@noble/hashes": "^2.2.0",
     "bech32": "^2.0.0",
     "bs58": "^6.0.0",
@@ -56,6 +61,6 @@
     "@types/node": "^26.1.2",
     "rollup": "^4.52.4",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.11"
   }
 }

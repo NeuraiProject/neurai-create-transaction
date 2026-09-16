@@ -1,3 +1,4 @@
+import { toRawInteger } from './amounts.js';
 export function ensureHex(hex: string, label = 'hex'): string {
   const normalized = String(hex || '').trim().toLowerCase();
   if (!/^[0-9a-f]*$/.test(normalized) || normalized.length % 2 !== 0) {
@@ -54,7 +55,7 @@ export function u32LE(value: number): Uint8Array {
 }
 
 export function u64LE(value: bigint | number): Uint8Array {
-  const bigintValue = typeof value === 'bigint' ? value : BigInt(value);
+  const bigintValue = toRawInteger(value);
   if (bigintValue < 0n || bigintValue > 0xffffffffffffffffn) {
     throw new Error(`uint64 out of range: ${bigintValue}`);
   }
@@ -68,7 +69,7 @@ export function u64LE(value: bigint | number): Uint8Array {
 }
 
 export function i64LE(value: bigint | number): Uint8Array {
-  const bigintValue = typeof value === 'bigint' ? value : BigInt(value);
+  const bigintValue = toRawInteger(value);
   if (bigintValue < -0x8000000000000000n || bigintValue > 0x7fffffffffffffffn) {
     throw new Error(`int64 out of range: ${bigintValue}`);
   }
@@ -79,7 +80,7 @@ export function i64LE(value: bigint | number): Uint8Array {
 }
 
 export function compactSize(value: bigint | number): Uint8Array {
-  const bigintValue = typeof value === 'bigint' ? value : BigInt(value);
+  const bigintValue = toRawInteger(value);
   if (bigintValue < 0n) throw new Error('CompactSize cannot encode negative numbers');
 
   if (bigintValue < 253n) {

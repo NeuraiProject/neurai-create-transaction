@@ -1,3 +1,5 @@
+export { SATS_PER_XNA, MAX_MONEY, toRawInteger, assertMoneyRange, decimalToSatoshis, satoshisToDecimal } from './amounts.js';
+export type { RawAmount, DecimalAmount } from './amounts.js';
 export type {
   AddressLike,
   AddressDestination,

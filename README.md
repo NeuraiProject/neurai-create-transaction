@@ -473,3 +473,20 @@ const built = createFromOperation({
   available — so a release pipeline must provide one of the two (or run this
   file as a mandatory separate job) for the live vectors to actually gate
   publishing.
+
+### Exact monetary amounts
+
+Use decimal strings for XNA amounts and `bigint` for raw units, especially
+above 90,071,992 XNA. `xnaToSatoshis('100000000.00000001')` returns
+`10000000000000001n`. Monetary builders reject values outside
+`0..2100000000000000000n` and unsafe numeric raw integers. Decimal input with
+more than eight significant fractional places is rejected rather than rounded.
+Large fractional `number` inputs must be supplied as strings instead.
+
+The dependency-free `@neuraiproject/neurai-create-transaction/amounts` entry
+exports `decimalToSatoshis`, `satoshisToDecimal`, `toRawInteger`,
+`assertMoneyRange`, `SATS_PER_XNA` and `MAX_MONEY`. The first two support
+signed deltas; apply `assertMoneyRange` for nonnegative monetary amounts.
+`decimalToSatoshis` interprets text/number as whole XNA units;
+`toRawInteger` interprets bigint/integer text/safe integer as raw units.
+Do not use a display number to build or sign a transaction.

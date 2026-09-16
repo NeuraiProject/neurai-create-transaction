@@ -10,6 +10,7 @@ const plugins = [
 ];
 
 export default [
+  { input: './build/amounts.js', output: [{ file: './dist/amounts.js', format: 'esm' }, { file: './dist/amounts.cjs', format: 'cjs' }] },
   {
     input: './build/entries/index.js',
     output: [

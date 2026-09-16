@@ -1,3 +1,4 @@
+import { toRawInteger } from './amounts.js';
 import {
   createAssetTransferOutput,
   createAssetTransferToScriptOutput,
@@ -78,10 +79,10 @@ function appendXnaEnvelope(
   changeAddress?: AddressLike,
   changeSats?: bigint | number
 ): void {
-  if (burnAddress && burnAmountSats !== undefined && BigInt(burnAmountSats) > 0n) {
+  if (burnAddress && burnAmountSats !== undefined && toRawInteger(burnAmountSats) > 0n) {
     outputs.push(createXnaOutput(burnAddress, burnAmountSats));
   }
-  if (changeAddress && changeSats !== undefined && BigInt(changeSats) > 0n) {
+  if (changeAddress && changeSats !== undefined && toRawInteger(changeSats) > 0n) {
     outputs.push(createXnaOutput(changeAddress, changeSats));
   }
 }
@@ -243,7 +244,7 @@ export function createIssueSubAssetTransaction(
 export function createIssueDepinTransaction(params: IssueDepinTransactionParams): BuiltTransaction {
   assertDepinAssetName(params.assetName);
   assertDepinNetwork(params.network);
-  if (BigInt(params.quantityRaw) <= 0n) {
+  if (toRawInteger(params.quantityRaw) <= 0n) {
     throw new Error('DEPIN issue quantity must be positive');
   }
   if (params.reissuable !== undefined && typeof params.reissuable !== 'boolean') {
@@ -285,7 +286,7 @@ export function createDepinTransferTransaction(params: DepinTransferTransactionP
         `DEPIN transfers must all move the same asset (got ${transfer.assetName} and ${assetName}); build one transaction per DEPIN asset`
       );
     }
-    if (BigInt(transfer.amountRaw) <= 0n) {
+    if (toRawInteger(transfer.amountRaw) <= 0n) {
       throw new Error(`DEPIN transfer amount must be positive: ${assetName}`);
     }
   }
@@ -309,7 +310,7 @@ export function createDepinSelfRevokeTransaction(
 ): BuiltTransaction {
   assertDepinAssetName(params.assetName);
   assertDepinNetwork(params.network);
-  if (BigInt(params.amountRaw) <= 0n) {
+  if (toRawInteger(params.amountRaw) <= 0n) {
     throw new Error('DEPIN self-revoke amount must be positive');
   }
 

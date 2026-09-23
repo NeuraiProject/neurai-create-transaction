@@ -423,6 +423,18 @@ const built = createFromOperation({
 
 ## Notes
 
+- **0.9.1**: TypeScript declarations for CommonJS. `require()` loads
+  `dist/index.cjs` / `dist/amounts.cjs`, but the package only published ESM
+  declarations, so a CommonJS file compiled with `moduleResolution: "node16"`
+  got `TS1471` and no types. Each condition of `exports` (`.` and `./amounts`)
+  now has its own declarations: `import` → `*.d.ts`, `require` → `*.d.cts`.
+  The CommonJS declarations import neurai-key's own CommonJS declarations,
+  hence `@neuraiproject/neurai-key` `^5.0.2`. No runtime or API change.
+  `npm run test:types` compiles ESM, CommonJS and browser consumers against
+  the built declarations (NodeNext, Node16, Bundler; `skipLibCheck: false`)
+  and `npm run test:package` checks the packed tarball in a clean project,
+  with TypeScript 4.7 too.
+
 - **0.9.0**: address types of neurai-key 5 (breaking).
 
   - `decodeAddress` decodes PQ witness v2 (`pq1z…` / `tpq1z…`) and ECDSA

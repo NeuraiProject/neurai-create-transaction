@@ -1,6 +1,6 @@
 {
   "name": "@neuraiproject/neurai-create-transaction",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Local Neurai raw transaction creation helpers for browser and Node environments",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -9,9 +9,14 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./browser": {
       "types": "./dist/index.d.ts",
@@ -19,9 +24,14 @@
     },
     "./global": "./dist/NeuraiCreateTransaction.global.js",
     "./amounts": {
-      "types": "./dist/amounts.d.ts",
-      "import": "./dist/amounts.js",
-      "require": "./dist/amounts.cjs"
+      "import": {
+        "types": "./dist/amounts.d.ts",
+        "default": "./dist/amounts.js"
+      },
+      "require": {
+        "types": "./dist/amounts.d.cts",
+        "default": "./dist/amounts.cjs"
+      }
     }
   },
   "files": [
@@ -32,16 +42,18 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && rollup -c rollup.config.mjs",
+    "build": "tsc -p tsconfig.json && rollup -c rollup.config.mjs && rollup -c rollup.dts.config.mjs",
     "build:ts": "tsc -p tsconfig.json",
     "prepack": "npm run build",
     "prepublishOnly": "npm run build",
-    "test": "npm run build && vitest run",
+    "test": "npm run build && vitest run && npm run test:types",
+    "test:types": "tsc -p tsconfig.types.json && tsc -p tsconfig.types-node16.json && tsc -p tsconfig.types-bundler.json",
+    "test:package": "npm run build && node scripts/check-package.mjs",
     "test:run": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@neuraiproject/neurai-key": "^5.0.1",
+    "@neuraiproject/neurai-key": "^5.0.2",
     "@noble/hashes": "^2.2.0",
     "bech32": "^2.0.0",
     "bs58": "^6.0.0",
@@ -60,6 +72,7 @@
     "@rollup/plugin-node-resolve": "^16.0.3",
     "@types/node": "^26.1.2",
     "rollup": "^4.52.4",
+    "rollup-plugin-dts": "^6.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   }

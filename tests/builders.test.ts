@@ -23,14 +23,14 @@ import {
 import { bytesToHex } from '../src/bytes.js';
 
 const LEGACY_TEST = 'tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA';
-const AUTHSCRIPT_TEST = 'tnq1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqjer8rk';
+const AUTHSCRIPT_TEST = 'tnc1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqqd6m25';
 const AUTHSCRIPT_COMMITMENT = '3c5c93248148e2b005ddb351bb506f0b830cec149a1b03791949c983d4336a76';
 const LEGACY_HD_OBJECT = getAddressByPath(
-  'xna-test',
-  getHDKey('xna-test', 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'),
+  'xna-legacy-test',
+  getHDKey('xna-legacy-test', 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'),
   'm/0/0'
 );
-const NOAUTH_OBJECT = getNoAuthAddress('xna-pq-test');
+const NOAUTH_OBJECT = getNoAuthAddress('xna-authscript-test', { witnessScript: '51' });
 
 describe('builders', () => {
   it('creates standard payment transactions', () => {
@@ -273,7 +273,7 @@ describe('builders', () => {
   });
 
   it('rejects DEPIN issuance on mainnet networks when network is provided', () => {
-    for (const network of ['xna', 'xna-pq', 'xna-legacy'] as const) {
+    for (const network of ['xna', 'xna-pq', 'xna-legacy', 'xna-old-legacy', 'xna-authscript'] as const) {
       expect(() =>
         createIssueDepinTransaction({
           inputs: [{ txid: '11'.repeat(32), vout: 0 }],

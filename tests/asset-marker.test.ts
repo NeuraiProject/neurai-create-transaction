@@ -39,7 +39,7 @@ import { bytesToHex } from '../src/bytes.js';
 // tests only check that the value given is the value emitted, everywhere.
 
 const LEGACY_TEST = 'tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA';
-const AUTHSCRIPT_TEST = 'tnq1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqjer8rk';
+const AUTHSCRIPT_TEST = 'tnc1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqqd6m25';
 const LEGACY_MAIN = 'NbURNXXXXXXXXXXXXXXXXXXXXXXXT65Gdr';
 const INPUT = { txid: '11'.repeat(32), vout: 0 };
 

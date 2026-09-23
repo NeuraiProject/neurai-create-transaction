@@ -76,17 +76,23 @@ describe('constants', () => {
   });
 
   it('rejects mainnet networks for DEPIN and accepts testnet families', () => {
-    for (const network of ['xna', 'xna-pq', 'xna-legacy'] as const) {
+    for (const network of ['xna', 'xna-pq', 'xna-legacy', 'xna-old-legacy', 'xna-authscript'] as const) {
       expect(() => assertDepinNetwork(network)).toThrow(/only available on testnet\/regtest/);
     }
-    for (const network of ['xna-test', 'xna-pq-test', 'xna-legacy-test'] as const) {
+    for (const network of ['xna-test', 'xna-pq-test', 'xna-legacy-test', 'xna-authscript-test'] as const) {
       expect(() => assertDepinNetwork(network)).not.toThrow();
     }
     expect(() => assertDepinNetwork(undefined)).not.toThrow();
   });
 
   it('infers networks and exports protocol constants', () => {
-    expect(inferNetworkFromAnyAddress('tnq1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqjer8rk')).toBe('xna-pq-test');
+    expect(inferNetworkFromAnyAddress('tnc1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqqd6m25')).toBe('xna-authscript-test');
+    expect(inferNetworkFromAnyAddress('tpq1z5age5p2v5q9w6qzadkjp4yep8gpr56q6mzd4fu6eus8ntulul6vq3q07pc')).toBe('xna-pq-test');
+    expect(inferNetworkFromAnyAddress('tnq1rwentz4njukcn400flwk5tu6s8fmzwd3e408nmkqz6dvfysgcdp2suqptef')).toBe('xna-test');
+    expect(inferNetworkFromAnyAddress('tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA')).toBe('xna-legacy-test');
+    expect(inferNetworkFromAnyAddress('NbURNXXXXXXXXXXXXXXXXXXXXXXXT65Gdr')).toBe('xna-legacy');
+    // The pre-5.0 encoding of generic AuthScript v1 is no longer an address.
+    expect(() => inferNetworkFromAnyAddress('tnq1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqjer8rk')).toThrow();
     expect(OWNER_ASSET_AMOUNT).toBe(100000000n);
     expect(UNIQUE_ASSET_AMOUNT).toBe(100000000n);
     expect(UNIQUE_ASSET_UNITS).toBe(0);

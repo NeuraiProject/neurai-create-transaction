@@ -7,7 +7,8 @@ Current scope:
 
 - serialize unsigned raw transactions
 - create standard XNA payment transactions
-- encode XNA outputs for legacy and AuthScript witness-v1 destinations
+- encode XNA outputs for every Neurai address type: legacy P2PKH, generic
+  AuthScript witness v1, PQ witness v2 and ECDSA witness v3
 - encode asset transfers and `transferwithmessage`
 - encode asset issue, owner, reissue, verifier and null-asset scripts
 - build expanded transactions for:
@@ -33,6 +34,7 @@ Address-taking APIs accept either a plain address string or a direct object from
 
 - `IAddressObject`
 - `IPQAddressObject`
+- `IPQAuthScriptAddressObject`
 - `INoAuthAddressObject`
 - `ILegacyAuthScriptAddressObject`
 
@@ -46,15 +48,45 @@ Build outputs:
 - `dist/browser.js`: browser ESM bundle
 - `dist/NeuraiCreateTransaction.global.js`: global browser bundle
 
-For PQ null-asset outputs there are two modes:
+## Address types
 
-- `strict`: canonical AuthScript form, emits `OP_XNA_ASSET OP_1 <32-byte-commitment> ...`
+`decodeAddress` follows the node (base58.cpp `DecodeDestination`): it tries
+Bech32m first and Base58Check otherwise, and every Bech32m prefix only goes
+with one witness version.
+
+| `type` | Witness | Prefix (mainnet / testnet, regtest) | scriptPubKey | `network` reported |
+|---|---|---|---|---|
+| `p2pkh` | — | `N…` / `t…` | `OP_DUP OP_HASH160 <20B> OP_EQUALVERIFY OP_CHECKSIG` | `xna-legacy` / `xna-legacy-test` |
+| `authscript` | v1 | `nc1p…` / `tnc1p…` | `OP_1 <32B commitment>` | `xna-authscript` / `xna-authscript-test` |
+| `pq` | v2 | `pq1z…` / `tpq1z…` | `OP_2 <32B commitment>` | `xna-pq` / `xna-pq-test` |
+| `ecdsa` | v3 | `nq1r…` / `tnq1r…` | `OP_3 <32B commitment>` | `xna` / `xna-test` |
+
+The `network` values are the neurai-key 5 labels of each address type.
+Witness destinations also carry `witnessVersion` and `commitment`;
+`isWitnessDestination(destination)` narrows the union. Any other pair is
+rejected, including `nq1p…` / `tnq1p…`: that was the encoding of generic
+AuthScript v1 before the node moved it to `nc` / `tnc`. The scriptPubKey is
+unchanged, so regenerate the address (neurai-key `xna-authscript` networks) to
+keep paying the same output.
+
+`classifyScriptPubKey(script)` does the same classification from a
+scriptPubKey (ignoring a trailing asset wrapper), and
+`encodeWitnessProgramScript(version, commitment)` builds `OP_n <32B>`.
+
+The library does not know chain state. The node only protects a witness
+family where it is active: today generic AuthScript v1 is active on testnet
+and regtest, and PQ v2 / ECDSA v3 only on regtest. Before activation a witness
+output is anyone-can-spend and the node refuses to decode the v2 / v3 address.
+
+For AuthScript null-asset outputs there are two modes:
+
+- `strict`: canonical AuthScript form, emits `OP_XNA_ASSET OP_n <32-byte-commitment> ...`
+  (`OP_1`, `OP_2` or `OP_3` after the witness version of the address)
 - `hash20`: legacy compatibility form, emits `OP_XNA_ASSET <20-byte-hash> ...`
 
-For AuthScript destinations (`nq1...` / `tnq1...`), the node now only accepts
-the canonical `strict` form. Requesting `hash20` for an AuthScript address
-throws. Legacy base58 addresses still encode null-asset destinations as 20-byte
-hash pushes.
+For AuthScript destinations the node only accepts the canonical `strict`
+form. Requesting `hash20` for an AuthScript address throws. Legacy base58
+addresses still encode null-asset destinations as 20-byte hash pushes.
 
 ## Supported operations
 
@@ -115,7 +147,7 @@ import {
   xnaToSatoshis
 } from './dist/index.js';
 
-const vault = getNoAuthAddress('xna-pq-test', {
+const vault = getNoAuthAddress('xna-authscript-test', {
   witnessScript: '51'
 });
 
@@ -124,7 +156,7 @@ const restricted = createIssueRestrictedTransaction({
     { txid: '...', vout: 0 },
     { txid: '...', vout: 1 }
   ],
-  burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_RESTRICTED'),
+  burnAddress: getBurnAddressForOperation('xna-test', 'ISSUE_RESTRICTED'),
   burnAmountSats: getBurnAmountSats('ISSUE_RESTRICTED'),
   xnaChangeAddress: vault,
   xnaChangeSats: xnaToSatoshis(12.5),
@@ -144,7 +176,7 @@ const tag = createQualifierTagTransaction({
   qualifierName: '#KYC',
   operation: 'tag',
   targetAddresses: [vault],
-  burnAddress: getBurnAddressForOperation('xna-pq-test', 'TAG_ADDRESS'),
+  burnAddress: getBurnAddressForOperation('xna-test', 'TAG_ADDRESS'),
   burnAmountSats: getBurnAmountSats('TAG_ADDRESS'),
   xnaChangeAddress: vault,
   xnaChangeSats: xnaToSatoshis(4),
@@ -154,7 +186,7 @@ const tag = createQualifierTagTransaction({
 
 const withCustomTail = createIssueRestrictedTransaction({
   inputs: [{ txid: '...', vout: 0 }],
-  burnAddress: getBurnAddressForOperation('xna-pq-test', 'ISSUE_RESTRICTED'),
+  burnAddress: getBurnAddressForOperation('xna-test', 'ISSUE_RESTRICTED'),
   burnAmountSats: getBurnAmountSats('ISSUE_RESTRICTED'),
   xnaChangeAddress: vault,
   xnaChangeSats: xnaToSatoshis(1),
@@ -197,9 +229,9 @@ const transfer = createDepinTransferTransaction({
     { txid: '...', vout: 1 }, // &DEVICE! UTXO (mandatory)
     { txid: '...', vout: 2 }  // XNA for fees
   ],
-  transfers: [{ address: 'tnq1...', assetName: '&DEVICE', amountRaw: 100000000n }],
-  ownerChangeAddress: 'tnq1...',
-  network: 'xna-pq-test'
+  transfers: [{ address: 'tnc1p...', assetName: '&DEVICE', amountRaw: 100000000n }],
+  ownerChangeAddress: 'tnc1p...',
+  network: 'xna-test'
 });
 
 // Holder renounces the asset. Every spent "&DEVICE" UTXO must come from the
@@ -211,7 +243,7 @@ const selfRevoke = createDepinSelfRevokeTransaction({
     { txid: '...', vout: 1 }  // XNA for fees
   ],
   assetName: '&DEVICE',
-  holderAddress: 'tnq1...',
+  holderAddress: 'tnc1p...',
   amountRaw: 100000000n
 });
 ```
@@ -243,7 +275,8 @@ DePIN rules enforced by the builders:
 `transfersToScript` / `createAssetTransferToScriptOutput` append the asset
 wrapper (`OP_XNA_ASSET <payload> OP_DROP`) to a scriptPubKey the caller
 already holds. Since 0.5.0 the recipient script must be **exactly** P2PKH
-(25 bytes) or AuthScript `OP_1 <32B>` (34 bytes); anything else throws.
+(25 bytes) or AuthScript `OP_n <32B>` (34 bytes; `OP_1`, and `OP_2` /
+`OP_3` where the strict families are active); anything else throws.
 This mirrors consensus: the node only accepts `OP_XNA_ASSET` at byte 25
 (after a P2PKH prefix), at byte 34 (after an AuthScript prefix) or at
 position 0 (null-asset metadata) — appending the wrapper to a bare covenant,
@@ -257,12 +290,13 @@ an AuthScript destination and use the regular address-based `transfers` leg:
 import { getNoAuthAddress } from '@neuraiproject/neurai-key';
 
 // auth_type 0x00 (NoAuth): the covenant script alone gates the spend.
-const noauth = getNoAuthAddress('xna-pq-test', { witnessScript: covenantBytes });
-// noauth.address is a tnq1... destination usable in `transfers`.
+const noauth = getNoAuthAddress('xna-authscript-test', { witnessScript: covenantBytes });
+// noauth.address is a tnc1p... destination usable in `transfers`.
 ```
 
 Do NOT hash the covenant yourself: the commitment is
-`TaggedHash("NeuraiAuthScript", 0x01 || authDescriptor || SHA256(witnessScript))`,
+`TaggedHash("NeuraiAuthScript", witnessVersion || authDescriptor || SHA256(witnessScript))`
+(witness version `0x01` for a covenant),
 not a plain `SHA256(script)` — a mis-derived commitment yields deposits the
 chain accepts but that can never be spent (`WITNESS_PROGRAM_MISMATCH`).
 Always derive it through neurai-key's public API.
@@ -376,18 +410,44 @@ const built = createFromOperation({
       { txid: '...', vout: 1 }
     ],
     qualifierName: '#KYC',
-    targetAddresses: ['tnq1...'],
+    targetAddresses: ['tnc1p...'],
     burnAddress: 'tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA',
     burnAmountSats: 20000000n,
-    xnaChangeAddress: 'tnq1...',
+    xnaChangeAddress: 'tnc1p...',
     xnaChangeSats: 400000000n,
-    qualifierChangeAddress: 'tnq1...',
+    qualifierChangeAddress: 'tnc1p...',
     qualifierChangeAmountRaw: 900000000n
   }
 });
 ```
 
 ## Notes
+
+- **0.9.0**: address types of neurai-key 5 (breaking).
+
+  - `decodeAddress` decodes PQ witness v2 (`pq1z…` / `tpq1z…`) and ECDSA
+    witness v3 (`nq1r…` / `tnq1r…`) destinations and emits `OP_2` / `OP_3`
+    scriptPubKeys for them (payments, asset transfers, null-asset outputs).
+  - Generic AuthScript v1 is decoded from `nc1p…` / `tnc1p…`, its node
+    encoding. **The old `nq1p…` / `tnq1p…` strings now throw**, like in the
+    node; the error explains how to regenerate the address.
+  - `DestinationType` gains `'pq'` and `'ecdsa'`; witness destinations carry
+    `witnessVersion`. Code that treated `type === 'authscript'` as "any
+    witness destination" must use `isWitnessDestination(...)`.
+  - The reported `network` changed: Base58 addresses report `xna-legacy` /
+    `xna-legacy-test` (was `xna` / `xna-test`, which now means ECDSA), `nc1`
+    reports `xna-authscript[-test]` (was `xna-pq[-test]`). The same applies to
+    `inferNetworkFromAnyAddress`.
+  - `SupportedNetwork` accepts every neurai-key 5 label, including
+    `xna-old-legacy` and `xna-authscript[-test]`.
+  - Base58 addresses whose lowercase form starts like a Bech32m prefix
+    (`NQ1…`, `tNc1…`) used to throw; they decode as P2PKH now.
+  - Depends on `@neuraiproject/neurai-key` `^5.0.1`.
+  - New exports: `classifyScriptPubKey`, `encodeWitnessProgramScript`,
+    `isWitnessDestination`, `WITNESS_FAMILIES` and the HRP constants.
+    `PQ_MAINNET_HRP` / `PQ_TESTNET_HRP` are now `pq` / `tpq`.
+    `encodePQWitnessScript` is deprecated (same as
+    `encodeAuthScriptDestinationScript`, which covers v1, v2 and v3).
 
 - **0.8.0**: two behaviour changes, both aligning the encoder with the node.
 
@@ -426,9 +486,9 @@ const built = createFromOperation({
   internal `XNA_*_PREFIX` constants were replaced by `assetPayloadPrefix`.
 
 - This package mirrors the node's expanded physical outputs, not the RPC JSON.
-- Any `nq1...` / `tnq1...` destination is treated as AuthScript `witness v1`
-  with a 32-byte commitment. The removed 20-byte PQ keyhash format is not
-  supported anymore.
+- Bech32m destinations are AuthScript witness v1 / v2 / v3 with a 32-byte
+  commitment (see [Address types](#address-types)). The removed 20-byte PQ
+  keyhash format is not supported anymore.
 - `resolveAddressInput(...)` is exported for consumers that want to normalize a
   string-or-object address input before storing or logging it.
 - `ISSUE_DEPIN` is modeled as its own operation even though today it shares the
@@ -449,8 +509,8 @@ const built = createFromOperation({
   (`REGTEST_GLOBAL_BURN_ADDRESS`, exported); `getBurnAddressForOperation`
   models mainnet/testnet only, so pass the constant through the
   `burnAddress`/`burnAmountSats` overrides when targeting regtest. Note
-  regtest shares the `tnq` HRP and base58 prefixes with testnet — networks
-  are indistinguishable by address.
+  regtest shares the `tnc` / `tpq` / `tnq` HRPs and base58 prefixes with
+  testnet — networks are indistinguishable by address.
 - Nodes serving DePIN messaging additionally need `-pubkeyindex=1` (the
   index, like `-assetindex`, does not change transaction validity).
 - The relay limit for null-asset data scripts is 512 bytes on testnet AND
@@ -473,6 +533,12 @@ const built = createFromOperation({
   available — so a release pipeline must provide one of the two (or run this
   file as a mandatory separate job) for the live vectors to actually gate
   publishing.
+- `tests/node-regtest-address-types.test.ts` uses the same node resolution
+  and needs a node that knows the `nc` / `pq` / `nq` prefixes (Neurai-DePIN
+  00f9a3b or later). It checks the scriptPubKey of every neurai-key 5 address
+  type against `validateaddress`, pays all of them in one library-built
+  transaction (the node decodes each output back to the same address) and
+  transfers an asset to v1, v2 and v3 destinations.
 
 ### Exact monetary amounts
 

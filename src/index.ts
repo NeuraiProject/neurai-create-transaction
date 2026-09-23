@@ -8,6 +8,11 @@ export type {
   AssetMarkerOptions,
   AssetPayloadType,
   AuthScriptAddressDestination,
+  ECDSAAddressDestination,
+  PQAddressDestination,
+  WitnessAddressDestination,
+  WitnessDestinationType,
+  WitnessVersion,
   AssetIssueOutputParams,
   AssetReissueOutputParams,
   AssetTransactionBaseParams,
@@ -123,14 +128,18 @@ export {
 } from './tx-codec.js';
 
 export {
+  classifyScriptPubKey,
   decodeAddress,
   encodeAuthScriptDestinationScript,
   encodeDestinationScript,
   encodeNullAssetDestinationScript,
   encodeP2PKHScript,
   encodePQWitnessScript,
+  encodeWitnessProgramScript,
+  isWitnessDestination,
   resolveAddressInput
 } from './address.js';
+export type { ScriptPubKeyKind } from './address.js';
 
 export {
   decodeAssetDataReferenceHex,
@@ -144,9 +153,17 @@ export {
 
 export {
   assetPayloadPrefix,
+  AUTHSCRIPT_MAINNET_HRP,
+  AUTHSCRIPT_TESTNET_HRP,
   DEFAULT_ASSET_MARKER,
-  resolveAssetMarker
+  ECDSA_MAINNET_HRP,
+  ECDSA_TESTNET_HRP,
+  PQ_MAINNET_HRP,
+  PQ_TESTNET_HRP,
+  resolveAssetMarker,
+  WITNESS_FAMILIES
 } from './networks.js';
+export type { WitnessFamily } from './networks.js';
 
 export {
   getBurnAddressForOperation,

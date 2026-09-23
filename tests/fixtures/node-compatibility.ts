@@ -23,7 +23,7 @@ export const NODE_COMPAT_INPUTS = [
   { txid: '22'.repeat(32), vout: 1 }
 ] as const;
 
-export const NODE_COMPAT_AUTHSCRIPT_ADDRESS = 'tnq1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqjer8rk';
+export const NODE_COMPAT_AUTHSCRIPT_ADDRESS = 'tnc1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqqd6m25';
 export const NODE_COMPAT_LEGACY_ADDRESS = 'tKCkEUQGbZqX91vyo2mpZ23pmYwfWCVfan';
 export const NODE_COMPAT_BURN_TAG = 'tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA';
 

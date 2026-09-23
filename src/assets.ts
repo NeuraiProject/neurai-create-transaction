@@ -95,11 +95,17 @@ export function isP2pkhScript(script: Uint8Array): boolean {
 
 /**
  * True when `script` is exactly the 34-byte AuthScript form
- * `OP_1 0x20 <32-byte commitment>`. Consensus only recognises the asset
- * wrapper when OP_XNA_ASSET sits at byte 34 after this exact prefix.
+ * `OP_n 0x20 <32-byte commitment>`, with `OP_1` (generic v1), `OP_2` (PQ)
+ * or `OP_3` (ECDSA). Consensus only recognises the asset wrapper when
+ * OP_XNA_ASSET sits at byte 34 after this exact prefix; `OP_2` / `OP_3`
+ * only where the strict AuthScript families are active.
  */
 export function isAuthScriptScript(script: Uint8Array): boolean {
-  return script.length === 34 && script[0] === 0x51 && script[1] === 0x20;
+  return (
+    script.length === 34 &&
+    (script[0] === 0x51 || script[0] === 0x52 || script[0] === 0x53) &&
+    script[1] === 0x20
+  );
 }
 
 /**
@@ -108,7 +114,7 @@ export function isAuthScriptScript(script: Uint8Array): boolean {
  * scriptPubKey bytes.
  *
  * The recipient script must be exactly P2PKH (25 bytes) or AuthScript
- * `OP_1 <32B>` (34 bytes): the node's OP_XNA_ASSET placement rules only
+ * `OP_n <32B>` (34 bytes, n = 1, 2 or 3): the node's OP_XNA_ASSET placement rules only
  * accept the asset wrapper right after one of those two prefixes, on every
  * network, so appending it to any other script (a bare covenant, P2SH, …)
  * produces a consensus-invalid output. To pay assets into an arbitrary
@@ -141,7 +147,7 @@ export function encodeAssetTransferScriptToScript(
     throw new Error(
       'asset transfers to arbitrary scripts are rejected by consensus ' +
         '(OP_XNA_ASSET placement rules): the recipient scriptPubKey must be ' +
-        'exactly P2PKH (25 bytes) or AuthScript OP_1 <32B> (34 bytes); ' +
+        'exactly P2PKH (25 bytes) or AuthScript OP_1/OP_2/OP_3 <32B> (34 bytes); ' +
         'commit the script into an AuthScript destination instead'
     );
   }

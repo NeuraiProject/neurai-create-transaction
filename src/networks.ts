@@ -1,14 +1,84 @@
-import { resolveAddressInput } from './address-input.js';
-import type { AddressLike, AssetMarker, AssetPayloadType, SupportedNetwork } from './types.js';
+import type { AssetMarker, AssetPayloadType, SupportedNetwork, WitnessDestinationType, WitnessVersion } from './types.js';
 
 export const LEGACY_MAINNET_PREFIX = 53;
 export const LEGACY_TESTNET_PREFIX = 127;
-export const PQ_MAINNET_HRP = 'nq';
-export const PQ_TESTNET_HRP = 'tnq';
 export const OP_XNA_ASSET = 0xc0;
 export const OP_DROP = 0x75;
 export const OP_1 = 0x51;
+export const OP_2 = 0x52;
+export const OP_3 = 0x53;
 export const OP_RESERVED = 0x50;
+
+/**
+ * Bech32m address families, as the node pairs them (base58.cpp
+ * `DecodeDestination`): every HRP only goes with one witness version, and
+ * the program is always the 32-byte AuthScript commitment. Regtest shares
+ * the testnet HRPs.
+ *
+ * | type         | witness | mainnet | testnet / regtest | network (neurai-key 5)          |
+ * |--------------|---------|---------|-------------------|---------------------------------|
+ * | `authscript` | v1      | `nc`    | `tnc`             | `xna-authscript[-test]`         |
+ * | `pq`         | v2      | `pq`    | `tpq`             | `xna-pq[-test]`                 |
+ * | `ecdsa`      | v3      | `nq`    | `tnq`             | `xna[-test]`                    |
+ */
+export interface WitnessFamily {
+  type: WitnessDestinationType;
+  witnessVersion: WitnessVersion;
+  hrp: { mainnet: string; testnet: string };
+  network: { mainnet: SupportedNetwork; testnet: SupportedNetwork };
+}
+
+export const WITNESS_FAMILIES: readonly WitnessFamily[] = [
+  {
+    type: 'authscript',
+    witnessVersion: 1,
+    hrp: { mainnet: 'nc', testnet: 'tnc' },
+    network: { mainnet: 'xna-authscript', testnet: 'xna-authscript-test' }
+  },
+  {
+    type: 'pq',
+    witnessVersion: 2,
+    hrp: { mainnet: 'pq', testnet: 'tpq' },
+    network: { mainnet: 'xna-pq', testnet: 'xna-pq-test' }
+  },
+  {
+    type: 'ecdsa',
+    witnessVersion: 3,
+    hrp: { mainnet: 'nq', testnet: 'tnq' },
+    network: { mainnet: 'xna', testnet: 'xna-test' }
+  }
+];
+
+export const AUTHSCRIPT_MAINNET_HRP = 'nc';
+export const AUTHSCRIPT_TESTNET_HRP = 'tnc';
+export const PQ_MAINNET_HRP = 'pq';
+export const PQ_TESTNET_HRP = 'tpq';
+export const ECDSA_MAINNET_HRP = 'nq';
+export const ECDSA_TESTNET_HRP = 'tnq';
+
+/** The family that owns `hrp` (lowercase), with the chain it encodes. */
+export function witnessFamilyByHrp(
+  hrp: string
+): { family: WitnessFamily; chain: 'mainnet' | 'testnet' } | undefined {
+  for (const family of WITNESS_FAMILIES) {
+    if (family.hrp.mainnet === hrp) return { family, chain: 'mainnet' };
+    if (family.hrp.testnet === hrp) return { family, chain: 'testnet' };
+  }
+  return undefined;
+}
+
+/** The family encoded by `witnessVersion`, or undefined for any other version. */
+export function witnessFamilyByVersion(witnessVersion: number): WitnessFamily | undefined {
+  return WITNESS_FAMILIES.find((family) => family.witnessVersion === witnessVersion);
+}
+
+/** `OP_1`, `OP_2` or `OP_3`: the scriptPubKey opcode of a witness version. */
+export function witnessVersionOpcode(witnessVersion: WitnessVersion): number {
+  if (!witnessFamilyByVersion(witnessVersion)) {
+    throw new Error(`Unsupported AuthScript witness version: ${String(witnessVersion)} (expected 1, 2 or 3)`);
+  }
+  return OP_1 - 1 + witnessVersion;
+}
 
 /**
  * NIP-040 asset payload marker.
@@ -63,13 +133,4 @@ export function assetPayloadPrefix(marker: AssetMarker | undefined, type: AssetP
   }
   const [a, b, c] = ASSET_MARKER_BYTES[resolveAssetMarker(marker)];
   return Uint8Array.of(a, b, c, typeByte);
-}
-
-export function inferNetworkFromAddress(address: AddressLike): SupportedNetwork {
-  const normalized = resolveAddressInput(address).toLowerCase();
-  if (normalized.startsWith(PQ_MAINNET_HRP + '1')) return 'xna-pq';
-  if (normalized.startsWith(PQ_TESTNET_HRP + '1')) return 'xna-pq-test';
-  if (normalized.startsWith('n')) return 'xna';
-  if (normalized.startsWith('t')) return 'xna-test';
-  throw new Error(`Unsupported Neurai address: ${address}`);
 }

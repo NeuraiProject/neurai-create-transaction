@@ -593,7 +593,7 @@ describe.skipIf(MODE === 'skip')('DePIN regtest vectors (library-built, node-val
     // Deposit 5 CARGO into the covenant commitment derived with neurai-key's
     // public API. This is the asset-compatible covenant deployment: a plain
     // `transfers` leg to the NoAuth address — transfersToScript not involved.
-    const noauth = getNoAuthAddress('xna-pq-test', {
+    const noauth = getNoAuthAddress('xna-authscript-test', {
       witnessScript: hexToBytes(COVENANT_SPK_FIXTURE_HEX)
     });
     const asset = assetUtxo(D, 'CARGO');

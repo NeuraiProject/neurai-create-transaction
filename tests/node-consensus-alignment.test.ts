@@ -218,14 +218,14 @@ describe('unknown network (§2.3)', () => {
   });
 
   it('still activates the DEPIN guard on canonical mainnet labels', () => {
-    for (const network of ['xna', 'xna-pq', 'xna-legacy'] as const) {
+    for (const network of ['xna', 'xna-pq', 'xna-legacy', 'xna-old-legacy', 'xna-authscript'] as const) {
       expect(() => assertDepinNetwork(network), network)
         .toThrow(/only available on testnet\/regtest/);
     }
   });
 
   it('keeps every supported testnet label working', () => {
-    for (const network of ['xna-test', 'xna-pq-test', 'xna-legacy-test'] as const) {
+    for (const network of ['xna-test', 'xna-pq-test', 'xna-legacy-test', 'xna-authscript-test'] as const) {
       expect(() => assertDepinNetwork(network), network).not.toThrow();
       expect(getBurnAddressForOperation(network, 'ISSUE_ROOT')).toMatch(/^t/);
     }
@@ -234,6 +234,8 @@ describe('unknown network (§2.3)', () => {
   it('keeps mainnet burn addresses resolving', () => {
     expect(getBurnAddressForOperation('xna', 'ISSUE_ROOT')).toMatch(/^N/);
     expect(getBurnAddressForOperation('xna-pq', 'ISSUE_ROOT')).toMatch(/^N/);
+    expect(getBurnAddressForOperation('xna-authscript', 'ISSUE_ROOT')).toMatch(/^N/);
+    expect(getBurnAddressForOperation('xna-old-legacy', 'ISSUE_ROOT')).toMatch(/^N/);
   });
 
   it('accepts an undefined network, which means "do not check"', () => {

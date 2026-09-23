@@ -1,6 +1,6 @@
 import { assertMoneyRange, decimalToSatoshis, toRawInteger } from './amounts.js';
 import type { AddressLike, BurnOperationType, SupportedNetwork } from './types.js';
-import { inferNetworkFromAddress } from './networks.js';
+import { inferNetworkFromAddress } from './address.js';
 
 export const OWNER_ASSET_AMOUNT = 100000000n;
 export const UNIQUE_ASSET_AMOUNT = 100000000n;
@@ -68,10 +68,13 @@ export const REGTEST_GLOBAL_BURN_ADDRESS = 'tBURNXXXXXXXXXXXXXXXXXXXXXXXVZLroy';
 const NETWORK_FAMILY: Record<SupportedNetwork, 'mainnet' | 'testnet'> = {
   'xna': 'mainnet',
   'xna-legacy': 'mainnet',
+  'xna-old-legacy': 'mainnet',
   'xna-pq': 'mainnet',
+  'xna-authscript': 'mainnet',
   'xna-test': 'testnet',
   'xna-legacy-test': 'testnet',
-  'xna-pq-test': 'testnet'
+  'xna-pq-test': 'testnet',
+  'xna-authscript-test': 'testnet'
 };
 
 /**
@@ -130,6 +133,11 @@ export function getBurnAmountSats(operation: BurnOperationType, multiplier = 1):
   return assertMoneyRange(decimalToSatoshis(BURN_COSTS_XNA[operation]) * assertMoneyRange(toRawInteger(multiplier, 'burn multiplier')));
 }
 
+/**
+ * Network label of an address, from its encoding (see `decodeAddress`):
+ * `xna-legacy[-test]` for Base58, `xna-authscript[-test]` for `nc1`/`tnc1`,
+ * `xna-pq[-test]` for `pq1`/`tpq1` and `xna[-test]` for `nq1`/`tnq1`.
+ */
 export function inferNetworkFromAnyAddress(address: AddressLike): SupportedNetwork {
   return inferNetworkFromAddress(address);
 }

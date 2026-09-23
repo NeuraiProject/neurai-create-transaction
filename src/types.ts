@@ -1,15 +1,34 @@
 import type {
+  AuthScriptNetwork,
   IAddressObject,
   ILegacyAuthScriptAddressObject,
   INoAuthAddressObject,
   IPQAddressObject,
-  Network as LegacyNetwork,
+  IPQAuthScriptAddressObject,
+  Network as KeyNetwork,
   PQNetwork
 } from '@neuraiproject/neurai-key';
 
-export type SupportedNetwork = LegacyNetwork | PQNetwork;
+/**
+ * Network labels of neurai-key 5. Each one names an address type:
+ * `xna` / `xna-test` ECDSA witness v3, `xna-legacy[-test]` and
+ * `xna-old-legacy` Base58 P2PKH, `xna-pq[-test]` PQ witness v2 and
+ * `xna-authscript[-test]` generic AuthScript witness v1. This library only
+ * uses the chain family (mainnet or testnet) of a label.
+ */
+export type SupportedNetwork = KeyNetwork | PQNetwork | AuthScriptNetwork;
 
-export type DestinationType = 'p2pkh' | 'authscript';
+/** AuthScript witness version of a Bech32m destination. */
+export type WitnessVersion = 1 | 2 | 3;
+
+/**
+ * - `authscript`: generic AuthScript witness v1 (`nc1p…` / `tnc1p…`), contracts
+ * - `pq`: strict PQ witness v2 (`pq1z…` / `tpq1z…`)
+ * - `ecdsa`: strict ECDSA witness v3 (`nq1r…` / `tnq1r…`)
+ */
+export type WitnessDestinationType = 'authscript' | 'pq' | 'ecdsa';
+
+export type DestinationType = 'p2pkh' | WitnessDestinationType;
 
 /**
  * NIP-040 asset payload marker: `'rvn'` (legacy, Ravencoin-inherited) or
@@ -81,6 +100,7 @@ export interface AddressObjectLike {
 export type NeuraiKeyAddressLike =
   | IAddressObject
   | IPQAddressObject
+  | IPQAuthScriptAddressObject
   | INoAuthAddressObject
   | ILegacyAuthScriptAddressObject
   | AddressObjectLike;
@@ -95,15 +115,42 @@ export interface LegacyAddressDestination {
   hash: Uint8Array;
 }
 
-export interface AuthScriptAddressDestination {
+/**
+ * A Bech32m destination: `OP_n 0x20 <32-byte commitment>` with
+ * `n = witnessVersion`. The program is the commitment.
+ */
+export interface WitnessAddressDestination {
   address: string;
-  type: 'authscript';
+  type: WitnessDestinationType;
+  witnessVersion: WitnessVersion;
   network: SupportedNetwork;
   program: Uint8Array;
   commitment: Uint8Array;
 }
 
-export type AddressDestination = LegacyAddressDestination | AuthScriptAddressDestination;
+/** Generic AuthScript witness v1 (`nc1p…` / `tnc1p…`). */
+export interface AuthScriptAddressDestination extends WitnessAddressDestination {
+  type: 'authscript';
+  witnessVersion: 1;
+}
+
+/** Strict PQ witness v2 (`pq1z…` / `tpq1z…`). */
+export interface PQAddressDestination extends WitnessAddressDestination {
+  type: 'pq';
+  witnessVersion: 2;
+}
+
+/** Strict ECDSA witness v3 (`nq1r…` / `tnq1r…`). */
+export interface ECDSAAddressDestination extends WitnessAddressDestination {
+  type: 'ecdsa';
+  witnessVersion: 3;
+}
+
+export type AddressDestination =
+  | LegacyAddressDestination
+  | AuthScriptAddressDestination
+  | PQAddressDestination
+  | ECDSAAddressDestination;
 
 export interface UnsignedTransaction {
   version?: number;
@@ -160,17 +207,19 @@ export interface TransferWithMessageOutputParams extends TransferOutputParams {
 /**
  * Parameters for an asset-transfer output that locks under a raw
  * `scriptPubKey` the caller already holds instead of an address. The script
- * MUST be exactly P2PKH (25 bytes) or AuthScript `OP_1 <32B>` (34 bytes):
- * consensus only accepts the `OP_XNA_ASSET + pushdata(payload) + OP_DROP`
- * wrapper right after one of those two prefixes, so any other script (a bare
- * covenant, P2SH, …) is rejected by the builder. To fund a covenant, commit
- * it into an AuthScript destination (neurai-key `getNoAuthAddress`) and use
- * the address-based `TransferOutputParams` instead.
+ * MUST be exactly P2PKH (25 bytes) or AuthScript `OP_n <32B>` (34 bytes,
+ * `n` = 1, 2 or 3): consensus only accepts the
+ * `OP_XNA_ASSET + pushdata(payload) + OP_DROP` wrapper right after one of
+ * those prefixes, so any other script (a bare covenant, P2SH, …) is rejected
+ * by the builder. To fund a covenant, commit it into an AuthScript
+ * destination (neurai-key `getNoAuthAddress`) and use the address-based
+ * `TransferOutputParams` instead.
  */
 export interface TransferToScriptOutputParams {
   /**
    * Raw scriptPubKey bytes (hex) that will prefix the asset-transfer
-   * wrapper. Must be P2PKH-shaped (25 bytes) or AuthScript-shaped (34 bytes).
+   * wrapper. Must be P2PKH-shaped (25 bytes) or AuthScript-shaped
+   * (34 bytes, `OP_1`/`OP_2`/`OP_3`).
    */
   scriptPubKeyHex: string;
   assetName: string;

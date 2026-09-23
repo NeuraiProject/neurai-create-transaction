@@ -19,7 +19,7 @@ import { encodeP2PKHScript } from '../src/address.js';
 import { bytesToHex } from '../src/bytes.js';
 
 const LEGACY_TEST = 'tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA';
-const AUTHSCRIPT_TEST = 'tnq1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqjer8rk';
+const AUTHSCRIPT_TEST = 'tnc1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqqd6m25';
 const AUTHSCRIPT_COMMITMENT = '3c5c93248148e2b005ddb351bb506f0b830cec149a1b03791949c983d4336a76';
 
 // Fixture: scriptPubKey of a partial-fill sell-order covenant produced by

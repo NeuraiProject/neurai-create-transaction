@@ -74,9 +74,9 @@ scriptPubKey (ignoring a trailing asset wrapper), and
 `encodeWitnessProgramScript(version, commitment)` builds `OP_n <32B>`.
 
 The library does not know chain state. The node only protects a witness
-family where it is active: today generic AuthScript v1 is active on testnet
-and regtest, and PQ v2 / ECDSA v3 only on regtest. Before activation a witness
-output is anyone-can-spend and the node refuses to decode the v2 / v3 address.
+family where it is active: on the reset testnet all three AuthScript families activate at block 10;
+regtest activates them at block 1. Before activation a witness output is
+anyone-can-spend and the node refuses to decode the v2 / v3 address.
 
 For AuthScript null-asset outputs there are two modes:
 
@@ -323,7 +323,7 @@ Every transfer / issue / owner / reissue payload opens with a 3-byte marker.
 NIP-040 migrates it from the Ravencoin-inherited `rvn` (`72 76 6e`) to `xna`
 (`78 6e 61`) **from an activation height per network**: blocks below it only
 accept `rvn` on new asset outputs, blocks at or above it only accept `xna`
-(testnet: 303000, already crossed; regtest: 1; mainnet: not scheduled yet).
+(reset testnet: 10; regtest: 1; mainnet: not scheduled yet).
 
 This library does **not** know chain state and never infers the marker from
 an address or a network. The node tells you which marker the next block
@@ -422,6 +422,11 @@ const built = createFromOperation({
 ```
 
 ## Notes
+
+- **0.9.2**: The reset testnet uses the new genesis and activates AuthScript
+  v1/v2/v3 at block 10. Testnet transaction builders must receive the
+  candidate block's `assetMarker` from the node. The minimum neurai-key
+  version is now `5.0.3`.
 
 - **0.9.1**: TypeScript declarations for CommonJS. `require()` loads
   `dist/index.cjs` / `dist/amounts.cjs`, but the package only published ESM

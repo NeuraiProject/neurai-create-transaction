@@ -86,8 +86,8 @@ export function witnessVersionOpcode(witnessVersion: WitnessVersion): number {
  * Every transfer / new / owner / reissue payload opens with a 3-byte marker
  * followed by the type byte. The marker is consensus: blocks below the NIP-040
  * activation height of a network only accept `rvn` on new asset outputs and
- * blocks at or above it only accept `xna` (mainnet: not scheduled; testnet:
- * 303000; regtest: 1). This library does NOT know chain state and never
+ * blocks at or above it only accept `xna` (mainnet: not scheduled; reset testnet:
+ * 10; regtest: 1). This library does NOT know chain state and never
  * infers the marker from a network or an address: the caller passes the
  * value reported by the node for the next block
  * (`getblockchaininfo.asset_marker`, node commit 347362b) — or, when building
